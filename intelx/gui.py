@@ -160,7 +160,7 @@ class IntelXCheckerApp(ctk.CTk):
 
         config_menu = Menu(self.menubar, tearoff=0, font=self.fonts["menu"])
         self.menubar.add_cascade(label="Configuración", menu=config_menu)
-        config_menu.add_command(label="Gestionar Clave API...", command=lambda: self.manage_api_key(), font=self.fonts["menu"])
+        config_menu.add_command(label="Gestionar Clave API...", command=lambda: self._manage_api_key(), font=self.fonts["menu"])
         config_menu.add_command(label="Fuentes de Búsqueda (Buckets)...", command=lambda: self._configure_buckets_dialog(), font=self.fonts["menu"])
 
         help_menu = Menu(self.menubar, tearoff=0, font=self.fonts["menu"])
@@ -418,7 +418,8 @@ class IntelXCheckerApp(ctk.CTk):
     def _terminate_intelx_search(self, search_id: str):
         try:
             headers = {'x-key': self.intelx_api_key, 'User-Agent': f"{USER_AGENT}/TerminateSearch"}
-            response = requests.post(INTELX_API_URL_TERMINATE, headers=headers, json={'id': search_id}, timeout=REQUEST_TIMEOUT_TERMINATE)
+            params = {'id': search_id}
+            response = requests.get(INTELX_API_URL_TERMINATE, headers=headers, params=params, timeout=REQUEST_TIMEOUT_TERMINATE)
             response.raise_for_status()
             logger.info(f"Búsqueda IntelX {search_id} terminada exitosamente.")
         except Exception as e:
@@ -602,6 +603,64 @@ class IntelXCheckerApp(ctk.CTk):
         ok_button = ctk.CTkButton(dialog, text="OK", command=dialog.destroy, width=100, font=self.fonts["main"])
         ok_button.grid(row=7, column=0, padx=20, pady=20, sticky="s")
         dialog.grid_rowconfigure(7, weight=1)
+
+    def _manage_api_key(self):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Gestionar Clave API de IntelX")
+        dialog.geometry("450x200")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
+        if os.path.exists(icon_ico):
+            try:
+                dialog.iconbitmap(icon_ico)
+            except Exception as e:
+                print(f"No se pudo asignar el icono a la ventana de diálogo: {e}")
+
+        dialog.grid_columnconfigure(0, weight=1)
+        
+        label = ctk.CTkLabel(dialog, text="Introduce tu clave API de Intelligence X:", font=self.fonts["main"])
+        label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
+
+        api_key_entry = ctk.CTkEntry(dialog, width=400, font=self.fonts["main"])
+        api_key_entry.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
+        if self.intelx_api_key:
+            api_key_entry.insert(0, self.intelx_api_key)
+
+        button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        button_frame.grid(row=2, column=0, padx=20, pady=20, sticky="e")
+
+        def save_key():
+            new_key = api_key_entry.get().strip()
+            if new_key:
+                self.intelx_api_key = new_key
+                self._has_api_key = True
+                env_path = find_dotenv(filename='.env', raise_error_if_not_found=False)
+                if not env_path:
+                    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+                    with open(env_path, "w") as f:
+                        f.write("# .env file\n")
+                
+                set_key(env_path, 'INTELX_API_KEY', new_key)
+                
+                self._fetch_and_display_credits_safe()
+                self._show_custom_messagebox("Éxito", "Clave API guardada correctamente.", mtype="info")
+            else:
+                self.intelx_api_key = None
+                self._has_api_key = False
+                self._update_credits_label("Créditos: N/A (Sin Clave)")
+                self._show_custom_messagebox("Advertencia", "La clave API ha sido eliminada.", mtype="warning")
+            dialog.destroy()
+
+        def cancel():
+            dialog.destroy()
+
+        save_btn = ctk.CTkButton(button_frame, text="Guardar", command=save_key, font=self.fonts["main"])
+        save_btn.pack(side="left", padx=10)
+        
+        cancel_btn = ctk.CTkButton(button_frame, text="Cancelar", command=cancel, fg_color="gray", font=self.fonts["main"])
+        cancel_btn.pack(side="left", padx=10)
 
     def _configure_buckets_dialog(self):
         dialog = ctk.CTkToplevel(self)
