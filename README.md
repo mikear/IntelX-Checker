@@ -43,8 +43,8 @@ IntelX Checker es una aplicación de escritorio para Windows que te permite busc
 
 1. **Clona el repositorio:**
     ```bash
-    git clone https://github.com/mikear/pawned.git
-    cd pawned
+    git clone https://github.com/mikear/IntelX-Checker.git
+    cd IntelX-Checker
     ```
 
 2. **Instala las dependencias:**
