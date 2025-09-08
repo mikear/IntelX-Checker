@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entorno
+.env
+
+# Exportaciones y backups
+exports/csv/*.csv
+exports/*
+intelx/gui_backup_*.py
+
+# Archivos temporales
+*.log
+*.tmp
+
+# IDE/OS
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Otros
+# Puedes agregar aquí otros archivos o carpetas que no quieras versionar

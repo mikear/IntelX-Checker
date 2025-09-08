@@ -1,0 +1,18 @@
+# Requirements for IntelX Checker App
+
+# GUI Toolkit
+customtkinter>=5.2.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# Handling .env files for API keys
+python-dotenv>=1.0.0
+
+# Image processing for previews (PIL Fork)
+Pillow>=10.0.0
+
+# HTML rendering in Tkinter
+# Para mostrar manual y glosario con formato y scroll
+markdown2>=2.4.12
+tkhtmlview>=0.3.1
