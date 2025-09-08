@@ -268,6 +268,10 @@ def show_export_selection_dialog(parent, records):
                              command=lambda: _export_and_close(dialog, records, "json"))
     json_btn.pack(pady=5, fill="x")
     
+    pdf_btn = ctk.CTkButton(main_frame, text="Exportar a PDF", 
+                            command=lambda: _export_and_close(dialog, records, "pdf"))
+    pdf_btn.pack(pady=5, fill="x")
+    
     # Cancel button
     cancel_btn = ctk.CTkButton(main_frame, text="Cancelar", command=dialog.destroy)
     cancel_btn.pack(pady=(10, 0), fill="x")
@@ -280,6 +284,8 @@ def _export_and_close(dialog, records, export_type):
             filepath = exports_module.export_to_csv(records, "seleccion")
         elif export_type == "json":
             filepath = exports_module.export_to_json(records, "seleccion")
+        elif export_type == "pdf":
+            filepath = exports_module.generate_pdf_report(records, title="Selección")
         
         if filepath:
             dialog.destroy()

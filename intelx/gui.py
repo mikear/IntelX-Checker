@@ -1,6 +1,7 @@
 """
 Módulo: gui.py
 Interfaz gráfica principal usando CustomTkinter y Tkinter
+Versión modular que mantiene toda la funcionalidad original
 """
 import customtkinter as ctk
 import tkinter as tk
@@ -18,6 +19,7 @@ import csv
 import logging
 import sys
 import io
+from collections import Counter
 from typing import Optional, Tuple, List, Dict, Any, Union
 try:
     from PIL import Image, ImageTk
@@ -38,7 +40,13 @@ except ImportError:
     Image = None
     ImageTk = None
 
-from intelx.api import check_intelx, retrieve_intelx_results, MEDIA_TYPE_MAP, INTELX_API_URL_AUTH_INFO, INTELX_API_URL_TERMINATE, INTELX_API_URL_FILE_PREVIEW, USER_AGENT, REQUEST_TIMEOUT_AUTH, REQUEST_TIMEOUT_TERMINATE, REQUEST_TIMEOUT_PREVIEW, INTELX_RATE_LIMIT_DELAY, DEFAULT_DATE_MIN, DEFAULT_DATE_MAX
+# Imports de módulos propios
+from .api import check_intelx, retrieve_intelx_results, get_api_credits, MEDIA_TYPE_MAP, INTELX_API_URL_AUTH_INFO, INTELX_API_URL_TERMINATE, INTELX_API_URL_FILE_PREVIEW, USER_AGENT, REQUEST_TIMEOUT_AUTH, REQUEST_TIMEOUT_TERMINATE, REQUEST_TIMEOUT_PREVIEW, INTELX_RATE_LIMIT_DELAY, DEFAULT_DATE_MIN, DEFAULT_DATE_MAX
+from .analysis import analyze_results_for_report, extract_iocs, clean_data_for_mandiant_report, prepare_mandiant_chart_data
+from .reporting import generate_modern_html_content, generate_executive_summary_html, generate_iocs_html, generate_data_table_html
+from .utils import sanitize_filename, open_in_browser
+from . import exports as exports_module
+from . import ui_components
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -50,721 +58,974 @@ class IntelXCheckerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.preview_windows = {}
-        self.title("IntelX Checker")
-        self.geometry("950x600")
-        self.app_version = "1.3.0"
-        self._filter_job = None
+        self.title("IntelX Checker V2")
+        self.geometry("800x600")
+        self.minsize(600, 400)
+        self.current_language = "es"
+        self.app_version = "2.0.0"
+        
+        # --- Fuentes por defecto ---
         self.fonts = {
-            "main": ("Segoe UI", 14),
-            "main_bold": ("Segoe UI", 14, "bold"),
-            "tree_header": ("Segoe UI", 13, "bold"),
-            "tree_content": ("Segoe UI", 13),
-            "secondary": ("Segoe UI", 12),
-            "tertiary": ("Segoe UI", 11),
-            "dialog_header": ("Segoe UI", 13, "bold"),
-            "dialog_body": ("Segoe UI", 12),
-            "menu": ("Segoe UI", 13)
+            "main": ("Arial", 14),
+            "main_bold": ("Arial", 14, "bold"),
+            "menu": ("Arial", 12),
+            "secondary": ("Arial", 11),
+            "tertiary": ("Arial", 10),
+            "tree_content": ("Arial", 11),
+            "tree_header": ("Arial", 12),
+            "dialog_header": ("Arial", 13),
+            "dialog_body": ("Arial", 11)
         }
-        load_dotenv(find_dotenv(filename='.env', raise_error_if_not_found=False), override=True)
-        self.intelx_api_key = os.getenv('INTELX_API_KEY')
-        self._has_api_key = bool(self.intelx_api_key)
-        self.available_buckets_for_ui = [
-            ("Pastes", "pastes", "Repositorios de texto pegado, como Pastebin y similares."),
-            ("Leaks (Públicas)", "leaks.public.general", "Filtraciones públicas generales de datos."),
-            ("Darknet (.onion)", "darknet.tor", "Sitios de la darknet accesibles por Tor (.onion)."),
-            ("Darknet (I2P)", "darknet.i2p", "Sitios de la darknet accesibles por I2P."),
-            ("Dumpsters", "dumpster", "Repositorios de datos desechados o expuestos accidentalmente."),
-            ("Whois", "whois", "Información de registros de dominios (Whois)."),
-            ("Usenet", "usenet", "Foros y grupos de noticias Usenet."),
-            ("Bot Logs", "leaks.logs", "Registros de bots y malware que capturan credenciales."),
-        ]
-        self.selected_buckets_config = [bucket_id for _, bucket_id, _ in self.available_buckets_for_ui]
+        
+        # --- Multilenguaje ---
+        self.current_language = self._load_saved_language()
+        self.languages = {
+            "es": {
+                "Correo o Dominio": "Correo o Dominio:",
+                "Buscar": "Buscar",
+                "Cancelar": "Cancelar",
+                "Listo": "Listo.",
+                "Filtrar resultados": "Filtrar resultados...",
+                "Créditos": "Créditos:",
+                "Archivo": "Archivo",
+                "Exportar a CSV": "Exportar a CSV...",
+                "Exportar a JSON": "Exportar a JSON...",
+                "Exportar a PDF": "Exportar a PDF...",
+                "Exportar a HTML": "Exportar a HTML...",
+                "Vista Previa": "Vista Previa",
+                "Seleccionar Todo": "Seleccionar Todo",
+                "Deseleccionar": "Deseleccionar",
+                "Copiar": "Copiar",
+                "Exportar Selección": "Exportar Selección",
+                "Refrescar": "Refrescar",
+                "Ajustar Columnas": "Ajustar Columnas",
+                "Salir": "Salir",
+                "Configuración": "Configuración",
+                "Gestionar Clave API": "Gestionar Clave API...",
+                "Fuentes de Búsqueda": "Fuentes de Búsqueda (Buckets)...",
+                "Ayuda": "Ayuda",
+                "Refrescar Créditos": "Refrescar Créditos",
+                "Obtener Clave API": "Obtener Clave API de IntelX",
+                "Acerca de": "Acerca de"
+            },
+            "en": {
+                "Correo o Dominio": "Email or Domain:",
+                "Buscar": "Search",
+                "Cancelar": "Cancel",
+                "Listo": "Done.",
+                "Filtrar resultados": "Filter results...",
+                "Créditos": "Credits:",
+                "Archivo": "File",
+                "Exportar a CSV": "Export to CSV...",
+                "Exportar a JSON": "Export to JSON...",
+                "Exportar a PDF": "Export to PDF...",
+                "Exportar a HTML": "Export to HTML...",
+                "Vista Previa": "Preview",
+                "Seleccionar Todo": "Select All",
+                "Deseleccionar": "Deselect",
+                "Copiar": "Copy",
+                "Exportar Selección": "Export Selection",
+                "Refrescar": "Refresh",
+                "Ajustar Columnas": "Adjust Columns",
+                "Salir": "Exit",
+                "Configuración": "Settings",
+                "Gestionar Clave API": "Manage API Key...",
+                "Fuentes de Búsqueda": "Search Sources (Buckets)...",
+                "Ayuda": "Help",
+                "Refrescar Créditos": "Refresh Credits",
+                "Obtener Clave API": "Get IntelX API Key",
+                "Acerca de": "About"
+            }
+        }
+        
+        # Inicializar variables
         self.current_records = []
-        self._is_searching = False
+        self.credits = 0
+        self.search_thread = None
+        self.stop_search = False
         self.cancel_event = None
+        self.config_file = os.path.join(os.path.dirname(__file__), '..', '.env')
+        
+        # Crear UI
         self._setup_ui()
-        self._setup_menu()
-        self._fetch_and_display_credits_safe()
-
-        self._set_app_icon()
-
-    def _set_app_icon(self):
-        import os
-        from PIL import Image, ImageTk
-        icon_png = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.png")
-        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
-        # Convertir PNG a ICO si no existe
-        if os.path.exists(icon_png):
-            try:
-                self.icon_img = Image.open(icon_png)
-                self.icon_img = self.icon_img.resize((32, 32), Image.Resampling.LANCZOS)
-                self.icon_tk = ImageTk.PhotoImage(self.icon_img)
-                if not os.path.exists(icon_ico):
-                    self.icon_img.save(icon_ico, format="ICO", sizes=[(32,32)])
-            except Exception as e:
-                print(f"No se pudo procesar el icono PNG: {e}")
-        else:
-            self.icon_img = None
-            self.icon_tk = None
-        # Usar icon.ico para la ventana principal
-        if os.path.exists(icon_ico):
-            try:
-                self.iconbitmap(icon_ico)
-            except Exception as e:
-                print(f"No se pudo cargar el icono ICO: {e}")
-
-    def _show_markdown_window(self, title, md_path):
+        self._setup_menus()
+        self._update_language()
+        
+        # Cargar configuración
+        self._load_api_config()
+        
+    def _load_saved_language(self):
+        """Carga el idioma guardado"""
         try:
-            import markdown2
-            from tkhtmlview import HTMLScrolledText
-        except ImportError:
-            import tkinter.messagebox as mb
-            mb.showerror("Dependencia Faltante", "Instala los paquetes 'markdown2' y 'tkhtmlview' para ver el formato mejorado.\nEjecuta: pip install markdown2 tkhtmlview")
-            return
-        dialog = ctk.CTkToplevel(self)
-        dialog.title(title)
-        dialog.geometry("700x600")
-        dialog.transient(self)
-        dialog.grab_set()
-        # Asignar icono a la ventana de diálogo
-        import os
-        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
-        if os.path.exists(icon_ico):
-            try:
-                dialog.iconbitmap(icon_ico)
-            except Exception as e:
-                print(f"No se pudo asignar el icono a la ventana de diálogo: {e}")
-        frame = ctk.CTkFrame(dialog)
-        frame.pack(expand=True, fill="both", padx=10, pady=10)
-        try:
-            with open(md_path, "r", encoding="utf-8") as f:
-                md_content = f.read()
-            html = markdown2.markdown(md_content)
-            html_view = HTMLScrolledText(frame, html=html)
-            html_view.pack(expand=True, fill="both")
-        except Exception as e:
-            error_label = ctk.CTkLabel(frame, text=f"No se pudo cargar el archivo: {e}", font=("Segoe UI", 12))
-            error_label.pack(expand=True, fill="both")
-        ok_btn = ctk.CTkButton(dialog, text="Cerrar", command=dialog.destroy)
-        ok_btn.pack(pady=10)
-
-    def _setup_menu(self):
-        self.menubar = Menu(self)
-        self.config(menu=self.menubar)
-
-        file_menu = Menu(self.menubar, tearoff=0, font=self.fonts["menu"])
-        self.menubar.add_cascade(label="Archivo", menu=file_menu)
-        file_menu.add_command(label="Exportar a CSV...", command=lambda: self.export_to_csv_safe(), font=self.fonts["menu"])
-        file_menu.add_command(label="Exportar a JSON...", command=lambda: self.export_to_json_safe(), font=self.fonts["menu"])
-        file_menu.add_command(label="Salir", command=lambda: self.quit(), font=self.fonts["menu"])
-
-        config_menu = Menu(self.menubar, tearoff=0, font=self.fonts["menu"])
-        self.menubar.add_cascade(label="Configuración", menu=config_menu)
-        config_menu.add_command(label="Gestionar Clave API...", command=lambda: self._manage_api_key(), font=self.fonts["menu"])
-        config_menu.add_command(label="Fuentes de Búsqueda (Buckets)...", command=lambda: self._configure_buckets_dialog(), font=self.fonts["menu"])
-
-        help_menu = Menu(self.menubar, tearoff=0, font=self.fonts["menu"])
-        self.menubar.add_cascade(label="Ayuda", menu=help_menu)
-        help_menu.add_command(label="Refrescar Créditos", command=lambda: self._fetch_and_display_credits_safe(), font=self.fonts["menu"])
-        help_menu.add_command(label="Obtener Clave API de IntelX", command=lambda: self.get_api_key_link(), font=self.fonts["menu"])
-        help_menu.add_command(label="Visitar Intelligence X", command=lambda: self.after(0, lambda: webbrowser.open("https://intelx.io")), font=self.fonts["menu"])
-        help_menu.add_command(label="Manual de Usuario", command=lambda: self._show_markdown_window("Manual de Usuario", os.path.join(os.path.dirname(__file__), "..", "docs", "MANUAL_DE_USUARIO.md")), font=self.fonts["menu"])
-        help_menu.add_command(label="Glosario de Resultados", command=lambda: self._show_markdown_window("Glosario de Resultados", os.path.join(os.path.dirname(__file__), "..", "docs", "GLOSARIO.md")), font=self.fonts["menu"])
-        help_menu.add_command(label="Acerca de...", command=lambda: self._show_about_dialog(), font=self.fonts["menu"])
-
+            if os.path.exists(self.config_file):
+                load_dotenv(self.config_file)
+                return os.getenv('LANGUAGE', 'es')
+        except:
+            pass
+        return 'es'
+    
     def _setup_ui(self):
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(3, weight=1)
-
-        self.input_frame = ctk.CTkFrame(self)
-        self.input_frame.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
-        self.input_frame.grid_columnconfigure(0, weight=1)
-
-        self.term_label = ctk.CTkLabel(self.input_frame, text="Correo o Dominio:", font=self.fonts["main"])
-        self.term_label.grid(row=0, column=0, padx=10, pady=(10, 5), sticky="w")
-
-        self.term_entry = ctk.CTkEntry(self.input_frame, placeholder_text="ejemplo@dominio.com", font=self.fonts["main"])
-        self.term_entry.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
-        self.term_entry.bind("<Return>", self.start_check_thread_safe)
-
-        self.button_frame = ctk.CTkFrame(self.input_frame, fg_color="transparent")
-        self.button_frame.grid(row=2, column=0, padx=10, pady=(5, 10))
-
-        self.check_button = ctk.CTkButton(self.button_frame, text="Buscar", command=self.start_check_thread_safe, font=self.fonts["main"])
-        self.check_button.pack(side="left", padx=(0, 10))
-
-        self.cancel_button = ctk.CTkButton(
-            self.button_frame, text="Cancelar", command=self.request_search_termination_safe,
-            state="disabled", fg_color="firebrick", hover_color="darkred", width=80, font=self.fonts["main"]
-        )
-        self.cancel_button.pack(side="left")
-
-        self.status_progress_frame = ctk.CTkFrame(self)
-        self.status_progress_frame.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
-        self.status_progress_frame.grid_columnconfigure(0, weight=1)
-
-        self.status_label = ctk.CTkLabel(self.status_progress_frame, text="Listo.", anchor="w", font=self.fonts["secondary"])
-        self.status_label.grid(row=0, column=0, padx=10, pady=(5, 2), sticky="ew")
-
-        self.progressbar = ctk.CTkProgressBar(self.status_progress_frame, height=10)
-        self.progressbar.grid(row=1, column=0, padx=10, pady=(2, 5), sticky="ew")
-        self.progressbar.set(0)
-
-        self.results_controls_frame = ctk.CTkFrame(self)
-        self.results_controls_frame.grid(row=2, column=0, padx=20, pady=(5,0), sticky="ew")
-        self.results_controls_frame.grid_columnconfigure(1, weight=1)
-
-        self.filter_entry = ctk.CTkEntry(self.results_controls_frame, placeholder_text="Filtrar resultados...", font=self.fonts["secondary"])
-        self.filter_entry.grid(row=0, column=0, padx=(10, 5), pady=5, sticky="w")
-        self.filter_entry.bind("<KeyRelease>", self._on_filter_changed)
-
-        self.credits_info_label = ctk.CTkLabel(
-            self.results_controls_frame, text="Créditos:", anchor="e",
-            text_color="gray", font=self.fonts["tertiary"]
-        )
-        self.credits_info_label.grid(row=0, column=2, padx=(5, 10), pady=5, sticky="e")
-
-        self._setup_treeview()
-
-        self.footer_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.footer_frame.grid(row=4, column=0, padx=20, pady=(5, 5), sticky="ew")
-        footer_font = self.fonts["tertiary"]
-        link_color = "#60A5FA"
-        footer_left = ctk.CTkFrame(self.footer_frame, fg_color="transparent")
-        footer_left.pack(side="left")
-        version_label = ctk.CTkLabel(footer_left, text=f"v{self.app_version}", font=footer_font, text_color="gray")
-        version_label.pack(side="left", padx=(0, 5))
-        separator_label1 = ctk.CTkLabel(footer_left, text="|", font=footer_font, text_color="gray")
-        separator_label1.pack(side="left", padx=5)
-        dev_by_label = ctk.CTkLabel(footer_left, text="Desarrollado por", font=footer_font, text_color="gray")
-        dev_by_label.pack(side="left", padx=(5, 0))
-        dev_link = ctk.CTkLabel(footer_left, text="Diego A. Rábalo", text_color=link_color, cursor="hand2", font=footer_font)
-        dev_link.pack(side="left", padx=5)
-        dev_link.bind("<Button-1>", lambda event: self.after(0, lambda: webbrowser.open("https://github.com/mikear")))
-        footer_right = ctk.CTkFrame(self.footer_frame, fg_color="transparent")
-        footer_right.pack(side="right")
-        powered_by_label = ctk.CTkLabel(footer_right, text="Resultados por", font=footer_font, text_color="gray")
-        powered_by_label.pack(side="left", padx=(5, 0))
-        intelx_link = ctk.CTkLabel(footer_right, text="Intelligence X", text_color=link_color, cursor="hand2", font=footer_font)
-        intelx_link.pack(side="left", padx=5)
-        intelx_link.bind("<Button-1>", lambda event: self.after(0, lambda: webbrowser.open("https://intelx.io")))
-
-    def _setup_treeview(self):
-        self.tree_frame = ctk.CTkFrame(self)
-        self.tree_frame.grid(row=3, column=0, padx=20, pady=(5, 10), sticky="nsew")
-        self.tree_frame.grid_rowconfigure(0, weight=1)
-        self.tree_frame.grid_columnconfigure(0, weight=1)
-
-        style = ttk.Style()
-        self.current_theme = ctk.get_appearance_mode().lower()
-        fg_color = "#F9F9FA" if self.current_theme == "light" else "#2B2B2B"
-        text_color = "#242424" if self.current_theme == "light" else "#DCE4EE"
-        header_bg = "#EAEAEA" if self.current_theme == "light" else "#333333"
-        header_fg = text_color
-        selected_bg = "#3470B6"
-
-        style.theme_use("default")
-        style.configure("Treeview",
-                        background=fg_color,
-                        foreground=text_color,
-                        fieldbackground=fg_color,
-                        borderwidth=0,
-                        font=self.fonts["tree_content"],
-                        rowheight=int(self.fonts["tree_content"][1] * 2.5))
-        style.map('Treeview', background=[('selected', selected_bg)])
-
-        style.configure("Treeview.Heading",
-                        background=header_bg,
-                        foreground=header_fg,
-                        font=self.fonts["tree_header"],
-                        relief="flat", anchor="center")
-        style.map("Treeview.Heading", background=[('active', '#3C89E8')])
-
-        columns = ("date", "name", "bucket", "systemid", "media")
-        self.results_tree = ttk.Treeview(
-            self.tree_frame,
-            columns=columns,
-            show="headings"
-        )
-
-        vsb = ctk.CTkScrollbar(self.tree_frame, orientation="vertical", command=self.results_tree.yview)
-        hsb = ctk.CTkScrollbar(self.tree_frame, orientation="horizontal", command=self.results_tree.xview)
-        self.results_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-
-        self.results_tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        hsb.grid(row=1, column=0, sticky="ew")
-
-        headings = {
-            "date": "Fecha Aproximada",
-            "name": "Titulo",
-            "bucket": "Fuente (Bucket)",
-            "systemid": "System ID",
-            "media": "Tipo de Medio"
+        """Configurar interfaz de usuario"""
+        # Frame principal
+        main_frame = ctk.CTkFrame(self)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Frame de búsqueda
+        search_frame = ctk.CTkFrame(main_frame)
+        search_frame.pack(fill="x", padx=10, pady=(10, 5))
+        
+        # Label y entry para término de búsqueda
+        self.search_label = ctk.CTkLabel(search_frame, text="Correo o Dominio:", font=self.fonts["main"])
+        self.search_label.pack(side="left", padx=(10, 5))
+        
+        self.term_entry = ctk.CTkEntry(search_frame, font=self.fonts["main"], width=300)
+        self.term_entry.pack(side="left", padx=5, expand=True, fill="x")
+        self.term_entry.bind("<Return>", lambda e: self.search_intelx())
+        
+        # Botones de búsqueda
+        self.search_button = ctk.CTkButton(search_frame, text="Buscar", command=self.search_intelx, font=self.fonts["main"])
+        self.search_button.pack(side="right", padx=(5, 10))
+        
+        self.cancel_button = ctk.CTkButton(search_frame, text="Cancelar", command=self.cancel_search, font=self.fonts["main"])
+        self.cancel_button.pack(side="right", padx=5)
+        self.cancel_button.configure(state="disabled")
+        
+        # Frame de filtros
+        filter_frame = ctk.CTkFrame(main_frame)
+        filter_frame.pack(fill="x", padx=10, pady=5)
+        
+        self.filter_entry = ctk.CTkEntry(filter_frame, placeholder_text="Filtrar resultados...", font=self.fonts["secondary"])
+        self.filter_entry.pack(side="left", padx=(10, 5), expand=True, fill="x")
+        self.filter_entry.bind("<KeyRelease>", self.filter_results)
+        
+        # Label de créditos
+        self.credits_label = ctk.CTkLabel(filter_frame, text="Créditos: 0", font=self.fonts["secondary"])
+        self.credits_label.pack(side="right", padx=(5, 10))
+        
+        # Frame de resultados
+        results_frame = ctk.CTkFrame(main_frame)
+        results_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        # Treeview para resultados con columnas reordenadas por prioridad
+        columns = ("date", "name", "ip", "type", "media", "bucket", "size", "score", "systemid")
+        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="tree headings", height=15)
+        
+        # Configurar columnas
+        self.results_tree.heading("#0", text="", anchor="w")
+        self.results_tree.column("#0", width=0, minwidth=0)
+        
+        # Configurar columnas con anchos específicos (fecha como prioridad)
+        column_widths = {
+            "date": 130,      # Fecha (primera prioridad)
+            "name": 200,      # Nombre del archivo/documento
+            "ip": 120,        # Dirección IP
+            "type": 80,       # Tipo de contenido
+            "media": 100,     # Tipo de media
+            "bucket": 120,    # Bucket/fuente
+            "size": 80,       # Tamaño
+            "score": 60,      # Puntuación de relevancia
+            "systemid": 200   # ID del sistema
         }
-        for col, text in headings.items():
-            self.results_tree.heading(col, text=text, anchor='center', command=lambda _col=col: self._treeview_sort_column(_col, False))
-
-        self.results_tree.column("date", width=150, stretch=False, anchor="w")
-        self.results_tree.column("name", width=300, stretch=True, anchor="w")
-        self.results_tree.column("bucket", width=120, stretch=False, anchor="w")
-        self.results_tree.column("systemid", width=250, stretch=False, anchor="w")
-        self.results_tree.column("media", width=120, stretch=False, anchor="w")
-
-    def _on_filter_changed(self, event=None):
-        if self._filter_job:
-            self.after_cancel(self._filter_job)
-        self._filter_job = self.after(300, self._filter_results)
-
-    def _filter_results(self):
-        filter_text = self.filter_entry.get().lower()
         
-        if not hasattr(self, "current_records"):
-            return
-
-        if not filter_text:
-            self._populate_results_display(self.current_records)
-            return
-
-        filtered_records = []
-        for record in self.current_records:
-            if filter_text in (record.get('name', '') or '').lower():
-                filtered_records.append(record)
+        for col in columns:
+            self.results_tree.heading(col, text=col.capitalize(), anchor="w")
+            width = column_widths.get(col, 120)
+            self.results_tree.column(col, width=width, minwidth=60)
         
-        self._populate_results_display(filtered_records)
+        # Scrollbars para treeview
+        v_scrollbar = ttk.Scrollbar(results_frame, orient="vertical", command=self.results_tree.yview)
+        h_scrollbar = ttk.Scrollbar(results_frame, orient="horizontal", command=self.results_tree.xview)
+        self.results_tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        
+        # Grid para treeview y scrollbars
+        self.results_tree.grid(row=0, column=0, sticky="nsew")
+        v_scrollbar.grid(row=0, column=1, sticky="ns")
+        h_scrollbar.grid(row=1, column=0, sticky="ew")
+        
+        results_frame.grid_rowconfigure(0, weight=1)
+        results_frame.grid_columnconfigure(0, weight=1)
+        
+        # Bind eventos del treeview
+        self.results_tree.bind("<Double-1>", self.on_item_double_click)
+        self.results_tree.bind("<Button-3>", self.show_context_menu)
+        
+        # Status bar con barra de progreso
+        status_frame = ctk.CTkFrame(main_frame)
+        status_frame.pack(fill="x", padx=10, pady=(5, 10))
+        
+        self.status_label = ctk.CTkLabel(status_frame, text="Listo.", font=self.fonts["tertiary"])
+        self.status_label.pack(side="left", padx=(10, 5))
+        
+        # Barra de progreso
+        self.progress_bar = ctk.CTkProgressBar(status_frame, width=200)
+        self.progress_bar.pack(side="right", padx=(5, 10))
+        self.progress_bar.set(0)
+    
+    def _setup_menus(self):
+        """Configurar menús"""
+        menubar = Menu(self)
+        self.config(menu=menubar)
+        
+        # Menú Archivo
+        file_menu = Menu(menubar, tearoff=0, font=self.fonts["menu"])
+        menubar.add_cascade(label="Archivo", menu=file_menu)
+        file_menu.add_command(label="Exportar a CSV...", command=self.export_to_csv_safe)
+        file_menu.add_command(label="Exportar a JSON...", command=self.export_to_json_safe)
+        file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf_safe)
+        file_menu.add_command(label="Exportar a HTML...", command=self.export_to_html_safe)
+        file_menu.add_separator()
+        file_menu.add_command(label="Salir", command=self.quit)
+        
+        # Menú Configuración
+        config_menu = Menu(menubar, tearoff=0, font=self.fonts["menu"])
+        menubar.add_cascade(label="Configuración", menu=config_menu)
+        config_menu.add_command(label="Gestionar Clave API...", command=self.manage_api_key)
+        config_menu.add_separator()
+        config_menu.add_command(label="Español", command=lambda: self._set_language("es"))
+        config_menu.add_command(label="English", command=lambda: self._set_language("en"))
+        config_menu.add_separator()
+        config_menu.add_command(label="Tema Claro", command=lambda: self._set_theme("light"))
+        config_menu.add_command(label="Tema Oscuro", command=lambda: self._set_theme("dark"))
+        
+        # Menú Ayuda
+        help_menu = Menu(menubar, tearoff=0, font=self.fonts["menu"])
+        menubar.add_cascade(label="Ayuda", menu=help_menu)
+        help_menu.add_command(label="Refrescar Créditos", command=self.refresh_credits)
+        help_menu.add_command(label="Obtener Clave API", command=self.open_intelx_api_page)
+        help_menu.add_separator()
+        help_menu.add_command(label="Acerca de", command=self.show_about)
+        
+        # Menú contextual para treeview
+        self.context_menu = Menu(self, tearoff=0, font=self.fonts["menu"])
+        self.context_menu.add_command(label="Vista Previa", command=self.preview_selected)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Seleccionar Todo", command=self.select_all)
+        self.context_menu.add_command(label="Deseleccionar", command=self.deselect_all)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Copiar", command=self.copy_selected)
+        self.context_menu.add_command(label="Exportar Selección", command=self.export_selection)
 
-    def _treeview_sort_column(self, col, reverse):
+    def _set_language(self, lang):
+        """Cambiar idioma"""
+        self.current_language = lang
+        self._save_language()
+        self._update_language()
+    
+    def _set_theme(self, theme):
+        """Cambiar tema"""
+        ctk.set_appearance_mode(theme)
+    
+    def _save_language(self):
+        """Guardar idioma seleccionado"""
         try:
-            l = [(self.results_tree.set(k, col), k) for k in self.results_tree.get_children('')]
-            l.sort(key=lambda t: str(t[0]).lower(), reverse=reverse)
-        except Exception:
-            l = [(self.results_tree.set(k, col), k) for k in self.results_tree.get_children('')]
-            l.sort(reverse=reverse)
-
-        for index, (val, k) in enumerate(l):
-            self.results_tree.move(k, '', index)
-
-        self.results_tree.heading(col, command=lambda: self._treeview_sort_column(col, not reverse))
-
-    def _populate_results_display(self, records_to_display):
-        for i in self.results_tree.get_children():
-            self.results_tree.delete(i)
+            set_key(self.config_file, 'LANGUAGE', self.current_language)
+        except:
+            pass
+    
+    def _update_language(self):
+        """Actualizar textos según idioma"""
+        lang = self.languages.get(self.current_language, self.languages["es"])
         
-        if not records_to_display:
+        # Actualizar elementos UI
+        self.search_label.configure(text=lang["Correo o Dominio"])
+        self.search_button.configure(text=lang["Buscar"])
+        self.cancel_button.configure(text=lang["Cancelar"])
+        self.filter_entry.configure(placeholder_text=lang["Filtrar resultados"])
+        self.credits_label.configure(text=f"{lang['Créditos']} {self.credits}")
+        self.status_label.configure(text=lang["Listo"])
+        
+        # Actualizar headers del treeview
+        self._update_treeview_headers()
+    
+    def _update_treeview_headers(self):
+        """Actualizar headers del treeview según idioma"""
+        lang = self.languages.get(self.current_language, self.languages["es"])
+        
+        headers = {
+            "date": "Fecha" if self.current_language == "es" else "Date",
+            "name": "Nombre" if self.current_language == "es" else "Name",
+            "ip": "IP" if self.current_language == "es" else "IP",
+            "type": "Tipo" if self.current_language == "es" else "Type", 
+            "media": "Media",
+            "bucket": "Fuente" if self.current_language == "es" else "Source",
+            "size": "Tamaño" if self.current_language == "es" else "Size",
+            "score": "Puntuación" if self.current_language == "es" else "Score",
+            "systemid": "ID Sistema" if self.current_language == "es" else "System ID"
+        }
+        
+        for col, header in headers.items():
+            self.results_tree.heading(col, text=header)
+    
+    def _load_api_config(self):
+        """Cargar configuración de API"""
+        try:
+            load_dotenv(self.config_file)
+            self.api_key = os.getenv('INTELX_API_KEY', '')
+            if self.api_key:
+                self.refresh_credits()
+        except:
+            self.api_key = ''
+    
+    def search_intelx(self):
+        """Buscar en IntelX"""
+        term = self.term_entry.get().strip()
+        if not term:
+            messagebox.showwarning("Error", "Ingrese un término de búsqueda")
             return
-
-        for record in records_to_display:
-            date = record.get('date', 'N/A')
-            name = record.get('name', 'Sin Título') or "Sin Título"
-            bucket = record.get('bucket', 'N/A')
-            systemid = record.get('systemid', 'N/A')
-            media_type = MEDIA_TYPE_MAP.get(record.get('media'), 'Desconocido')
+        
+        if not self.api_key:
+            messagebox.showwarning("Error", "Configure su clave API primero")
+            self.manage_api_key()
+            return
+        
+        # Actualizar créditos antes de iniciar la búsqueda
+        self.refresh_credits()
+        
+        # Limpiar resultados anteriores
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
+        
+        self.current_records = []
+        self.stop_search = False
+        
+        # Actualizar UI
+        self.search_button.configure(state="disabled")
+        self.cancel_button.configure(state="normal")
+        self.status_label.configure(text="Iniciando búsqueda...")
+        self.progress_bar.set(0.1)
+        
+        # Iniciar búsqueda en hilo separado
+        self.search_thread = threading.Thread(target=self._search_worker, args=(term,))
+        self.search_thread.daemon = True
+        self.search_thread.start()
+    
+    def _search_worker(self, term):
+        """Worker para búsqueda en hilo separado"""
+        try:
+            # Progreso inicial
+            self.after(0, lambda: self.progress_bar.set(0.3))
+            self.after(0, lambda: self.status_label.configure(text="Conectando con IntelX..."))
             
-            self.results_tree.insert("", "end", values=(date, name, bucket, systemid, media_type), iid=record.get('systemid'))
+            # Usar módulo API - la función check_intelx ahora retorna (success, data, search_id)
+            success, data_or_error, search_id = check_intelx(term, self.api_key)
+            
+            # Progreso medio
+            self.after(0, lambda: self.progress_bar.set(0.7))
+            
+            if success:
+                self.after(0, lambda: self.status_label.configure(text="Procesando resultados..."))
+                
+                # Si data es un dict con 'records', usar esos registros
+                if isinstance(data_or_error, dict) and 'records' in data_or_error:
+                    self.current_records = data_or_error['records']
+                elif isinstance(data_or_error, list):
+                    self.current_records = data_or_error
+                elif isinstance(data_or_error, dict):
+                    # Asumir que es el resultado directo
+                    self.current_records = [data_or_error]
+                else:
+                    self.current_records = []
+                
+                # Progreso final
+                self.after(0, lambda: self.progress_bar.set(1.0))
+                
+                if self.current_records and not self.stop_search:
+                    self.after(0, self._populate_results)
+                    self.after(0, lambda: self.status_label.configure(text=f"Encontrados {len(self.current_records)} resultados"))
+                else:
+                    self.after(0, lambda: self.status_label.configure(text="No se encontraron resultados"))
+            else:
+                # Error en la búsqueda
+                error_msg = data_or_error if isinstance(data_or_error, str) else "Error en la búsqueda"
+                self.after(0, lambda: self.status_label.configure(text=error_msg))
+                self.after(0, lambda: self.progress_bar.set(0))
+                
+        except Exception as e:
+            logger.exception("Error en búsqueda")
+            self.after(0, lambda: self.status_label.configure(text=f"Error: {str(e)}"))
+            self.after(0, lambda: self.progress_bar.set(0))
+        finally:
+            self.after(0, self._search_finished)
+    
+    def _populate_results(self):
+        """Poblar treeview con resultados usando la estructura real de la API de IntelX"""
+        for i, record in enumerate(self.current_records):
+            if self.stop_search:
+                break
+                
+            # Manejar diferentes tipos de datos de entrada
+            if isinstance(record, str):
+                # Si es string, crear un registro básico
+                record_dict = {
+                    'name': f'Resultado {i+1}',
+                    'type': 1,  # Texto
+                    'media': 1,  # Paste
+                    'bucket': 'unknown',
+                    'size': len(record),
+                    'date': '',
+                    'xscore': 0,
+                    'systemid': f'record_{i}',
+                    'data': record
+                }
+            elif isinstance(record, dict):
+                record_dict = record
+            else:
+                # Fallback para otros tipos
+                record_dict = {
+                    'name': f'Resultado {i+1}',
+                    'type': 0,
+                    'media': 0,
+                    'bucket': 'unknown',
+                    'size': 0,
+                    'date': '',
+                    'xscore': 0,
+                    'systemid': f'record_{i}',
+                    'data': str(record)
+                }
+                
+            # Fecha formateada (primera prioridad)
+            date_str = record_dict.get('date', '')
+            if date_str:
+                try:
+                    # Formatear fecha si está disponible
+                    date_text = date_str[:19] if len(date_str) > 19 else date_str
+                except:
+                    date_text = date_str
+            else:
+                date_text = 'N/A'
+                
+            # Formatear datos basándose en la estructura del diccionario
+            name = record_dict.get('name', f'Documento {i+1}')
+            name = name[:60] + "..." if len(name) > 60 else name
+            
+            # Extraer IP del nombre o datos
+            ip_address = self._extract_ip_address(record_dict)
+            
+            # Tipo de contenido (type)
+            type_val = record_dict.get('type', 0)
+            type_text = self._get_type_description(type_val)
+            
+            # Media type (más descriptivo)
+            media_val = record_dict.get('media', 0)
+            media_text = self._get_media_description(media_val)
+            
+            # Bucket con nombre legible
+            bucket = record_dict.get('bucket', 'unknown')
+            bucket_text = record_dict.get('bucketh', bucket)  # bucketh es el nombre legible
+            
+            # Tamaño formateado
+            size = record_dict.get('size', 0)
+            size_text = self._format_file_size(size)
+            
+            # Puntuación de relevancia (xscore)
+            score = record_dict.get('xscore', 0)
+            score_text = str(score) if score > 0 else 'N/A'
+            
+            # System ID
+            system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
+            
+            # Nuevo orden: fecha, nombre, IP, tipo, media, bucket, tamaño, score, systemid
+            self.results_tree.insert("", "end", values=(
+                date_text, name, ip_address, type_text, media_text, 
+                bucket_text, size_text, score_text, system_id
+            ))
+    
+    def _extract_ip_address(self, record_dict):
+        """Extraer dirección IP del registro"""
+        import re
+        
+        # Patrón para IPv4
+        ipv4_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
+        # Patrón para IPv6 simplificado
+        ipv6_pattern = r'\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b'
+        
+        # Buscar en diferentes campos
+        search_fields = [
+            record_dict.get('name', ''),
+            record_dict.get('data', ''),
+            str(record_dict)
+        ]
+        
+        for field in search_fields:
+            if field:
+                # Buscar IPv4
+                ipv4_match = re.search(ipv4_pattern, field)
+                if ipv4_match:
+                    return ipv4_match.group()
+                
+                # Buscar IPv6
+                ipv6_match = re.search(ipv6_pattern, field)
+                if ipv6_match:
+                    return ipv6_match.group()
+        
+        return 'N/A'
 
-    def start_check_thread_safe(self, event=None):
-        if hasattr(self, '_is_searching') and self._is_searching:
-            self._show_custom_messagebox("Búsqueda en Progreso", "Ya hay una búsqueda en curso.", mtype="warning")
-            return
-        if not hasattr(self, 'intelx_api_key') or not self.intelx_api_key:
-            self._show_custom_messagebox("Falta Clave API", "La clave API de Intelligence X no está configurada.", mtype="error")
-            return
-        term_to_search = self.term_entry.get().strip()
-        if not term_to_search:
-            self._show_custom_messagebox("Término Vacío", "Por favor, introduce un correo electrónico o dominio para buscar.", mtype="error")
-            return
-        selected_buckets = self.selected_buckets_config.copy()
-        if not selected_buckets:
-            self._show_custom_messagebox("Sin Selección", "Debes seleccionar al menos una fuente (bucket) para buscar desde el menú Configuración.", mtype="warning")
-            return
-        self._is_searching = True
-        self.cancel_event = threading.Event()
-        threading.Thread(target=self._search_task, args=(term_to_search, selected_buckets), daemon=True).start()
+    def _get_type_description(self, type_val):
+        """
+        Obtener descripción del tipo de contenido usando el mapeo oficial de IntelX API.
+        Nunca devuelve números, siempre texto descriptivo.
+        """
+        try:
+            # Convertir a entero si es necesario
+            if isinstance(type_val, str):
+                try:
+                    type_val = int(type_val)
+                except ValueError:
+                    return "Tipo de Contenido Desconocido"
+            
+            # Mapeo según documentación oficial de IntelX SDK
+            type_descriptions = {
+                0: "Binario/Sin especificar",
+                1: "Texto plano",
+                2: "Imagen",
+                3: "Video",
+                4: "Audio",
+                5: "Documento",
+                6: "Ejecutable",
+                7: "Contenedor",
+                1001: "Usuario",
+                1002: "Filtración",
+                1004: "URL",
+                1005: "Foro"
+            }
+            
+            description = type_descriptions.get(type_val)
+            
+            if description:
+                return description
+            else:
+                # Si no se encuentra, devolver descripción genérica (nunca un número)
+                return f"Tipo de Contenido Desconocido ({type_val})"
+                
+        except Exception as e:
+            logger.error(f"Error obteniendo descripción de tipo {type_val}: {e}")
+            return "Tipo de Contenido Error"
+    
+    def _get_media_description(self, media_val):
+        """
+        Obtener descripción del tipo de media usando el mapeo oficial de IntelX API.
+        Nunca devuelve números, siempre texto descriptivo.
+        """
+        try:
+            # Convertir a entero si es necesario
+            if isinstance(media_val, str):
+                try:
+                    media_val = int(media_val)
+                except ValueError:
+                    return "Tipo de Media Desconocido"
+            
+            # Usar el mapeo oficial de la API
+            description = MEDIA_TYPE_MAP.get(media_val)
+            
+            if description:
+                return description
+            else:
+                # Si no se encuentra, devolver descripción genérica (nunca un número)
+                return f"Tipo de Media Desconocido ({media_val})"
+                
+        except Exception as e:
+            logger.error(f"Error obteniendo descripción de media {media_val}: {e}")
+            return "Tipo de Media Error"
+    
+    def _find_record_by_id(self, record_id):
+        """Buscar registro por ID de manera robusta"""
+        for i, record in enumerate(self.current_records):
+            if isinstance(record, dict):
+                # Buscar por systemid, storageid o índice
+                if (record.get('systemid') == record_id or 
+                    record.get('storageid') == record_id):
+                    return record
+            elif isinstance(record, str):
+                # Para strings, usar el índice
+                if f'record_{i}' == record_id:
+                    return {
+                        'name': f'Resultado {i+1}',
+                        'type': 1,
+                        'media': 1,
+                        'bucket': 'unknown',
+                        'size': len(record),
+                        'date': '',
+                        'xscore': 0,
+                        'systemid': f'record_{i}',
+                        'data': record
+                    }
+        return None
 
-    def request_search_termination_safe(self):
+    def _format_file_size(self, size):
+        """Formatear tamaño de archivo en formato legible"""
+        if not size or size == 0:
+            return "0 B"
+        
+        try:
+            size = int(size)
+            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                if size < 1024.0:
+                    return f"{size:.1f} {unit}" if unit != 'B' else f"{size} {unit}"
+                size /= 1024.0
+            return f"{size:.1f} PB"
+        except (ValueError, TypeError):
+            return str(size)
+
+    def _search_finished(self):
+        """Finalizar búsqueda"""
+        self.search_button.configure(state="normal")
+        self.cancel_button.configure(state="disabled")
+        self.stop_search = False
+        # Resetear barra de progreso después de un momento
+        self.after(2000, lambda: self.progress_bar.set(0))
+        # Actualizar créditos después de la búsqueda
+        self.after(1000, self.refresh_credits)
+    
+    def cancel_search(self):
+        """Cancelar búsqueda"""
+        self.stop_search = True
+        # Señalar al evento de cancelación si existe
         if hasattr(self, 'cancel_event') and self.cancel_event:
             self.cancel_event.set()
-            self._update_status_label("Solicitando cancelación de búsqueda...")
-            self.after(100, lambda: self._update_gui_state())
-        else:
-            self._show_custom_messagebox("Información", "No hay búsqueda activa para cancelar.", mtype="info")
-
-    def _search_task(self, term_to_search: str, selected_buckets: List[str]):
-        self.after(0, lambda: self._update_gui_state())
-        self.after(0, lambda: self._update_status_label(f"Buscando '{term_to_search}'..."))
-        self.after(0, lambda: self.progressbar.set(0.1))
-        api_key = self.intelx_api_key if self.intelx_api_key else ""
-        success, data_or_error, search_id = check_intelx(
-            search_term=term_to_search,
-            api_key=api_key,
-            selected_buckets=selected_buckets,
-            cancel_event=self.cancel_event
-        )
-        self.after(0, lambda: self.progressbar.set(1.0))
-        self._is_searching = False
-        self.after(0, lambda: self._update_gui_state())
-        if success:
-            records = data_or_error["records"] if isinstance(data_or_error, dict) and "records" in data_or_error else []
-            self.current_records = records # Store all fetched records
-            self.after(0, lambda: self._populate_results_display(records))
-            self.after(0, lambda: self._update_status_label(f"Búsqueda completada. Encontrados {len(records)} resultados."))
-        else:
-            error_msg = str(data_or_error) if not isinstance(data_or_error, dict) else json.dumps(data_or_error, ensure_ascii=False)
-            self.after(0, lambda: messagebox.showerror("Error de Búsqueda", error_msg))
-            self.after(0, lambda: self._update_status_label("Búsqueda fallida o cancelada."))
-        if search_id:
-            threading.Thread(target=self._terminate_intelx_search, args=(search_id,), daemon=True).start()
-
-    def _terminate_intelx_search(self, search_id: str):
+        self.status_label.configure(text="Búsqueda cancelada")
+        self._search_finished()
+    
+    def filter_results(self, event=None):
+        """Filtrar resultados usando la nueva estructura de columnas"""
+        filter_text = self.filter_entry.get().lower()
+        
+        # Limpiar treeview
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
+        
+        # Volver a poblar con filtro
+        for i, record in enumerate(self.current_records):
+            # Manejar diferentes tipos de datos de entrada
+            if isinstance(record, str):
+                record_dict = {
+                    'name': f'Resultado {i+1}',
+                    'type': 1,
+                    'media': 1,
+                    'bucket': 'unknown',
+                    'size': len(record),
+                    'date': '',
+                    'xscore': 0,
+                    'systemid': f'record_{i}',
+                    'data': record
+                }
+            elif isinstance(record, dict):
+                record_dict = record
+            else:
+                record_dict = {
+                    'name': f'Resultado {i+1}',
+                    'type': 0,
+                    'media': 0,
+                    'bucket': 'unknown',
+                    'size': 0,
+                    'date': '',
+                    'xscore': 0,
+                    'systemid': f'record_{i}',
+                    'data': str(record)
+                }
+            
+            # Buscar en todos los campos del registro
+            record_data = str(record_dict).lower()
+            name = record_dict.get('name', f'Documento {i+1}').lower()
+            bucket = record_dict.get('bucket', '').lower()
+            
+            if (filter_text in record_data or 
+                filter_text in name or 
+                filter_text in bucket):
+                
+                # Fecha formateada (primera prioridad)
+                date_str = record_dict.get('date', '')
+                if date_str:
+                    try:
+                        date_text = date_str[:19] if len(date_str) > 19 else date_str
+                    except:
+                        date_text = date_str
+                else:
+                    date_text = 'N/A'
+                
+                # Recrear la entrada usando los nuevos campos
+                name_display = record_dict.get('name', f'Documento {i+1}')
+                name_display = name_display[:60] + "..." if len(name_display) > 60 else name_display
+                
+                # Extraer IP
+                ip_address = self._extract_ip_address(record_dict)
+                
+                type_val = record_dict.get('type', 0)
+                type_text = self._get_type_description(type_val)
+                
+                media_val = record_dict.get('media', 0)
+                media_text = self._get_media_description(media_val)
+                
+                bucket = record_dict.get('bucket', 'unknown')
+                bucket_text = record_dict.get('bucketh', bucket)
+                
+                size = record_dict.get('size', 0)
+                size_text = self._format_file_size(size)
+                
+                score = record_dict.get('xscore', 0)
+                score_text = str(score) if score > 0 else 'N/A'
+                
+                system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
+                
+                # Nuevo orden: fecha, nombre, IP, tipo, media, bucket, tamaño, score, systemid
+                self.results_tree.insert("", "end", values=(
+                    date_text, name_display, ip_address, type_text, media_text, 
+                    bucket_text, size_text, score_text, system_id
+                ))
+    
+    def refresh_credits(self):
+        """Actualizar créditos usando la API real"""
+        if not self.api_key:
+            return
+            
         try:
-            headers = {'x-key': self.intelx_api_key, 'User-Agent': f"{USER_AGENT}/TerminateSearch"}
-            params = {'id': search_id}
-            response = requests.get(INTELX_API_URL_TERMINATE, headers=headers, params=params, timeout=REQUEST_TIMEOUT_TERMINATE)
-            response.raise_for_status()
-            logger.info(f"Búsqueda IntelX {search_id} terminada exitosamente.")
+            logger.info("Actualizando créditos desde la API...")
+            success, credits_or_error = get_api_credits(self.api_key)
+            
+            if success:
+                old_credits = getattr(self, 'credits', 0)
+                self.credits = credits_or_error
+                lang = self.languages.get(self.current_language, self.languages["es"])
+                self.credits_label.configure(text=f"{lang['Créditos']} {self.credits}")
+                
+                if old_credits != self.credits:
+                    logger.info(f"Créditos actualizados: {old_credits} → {self.credits}")
+                else:
+                    logger.info(f"Créditos confirmados: {self.credits}")
+            else:
+                logger.error(f"Error obteniendo créditos: {credits_or_error}")
+                lang = self.languages.get(self.current_language, self.languages["es"])
+                self.credits_label.configure(text=f"{lang['Créditos']} Error")
+                
         except Exception as e:
-            logger.error(f"Error al intentar terminar la búsqueda IntelX {search_id}: {e}")
-
-    def _get_records_to_export(self):
-        selected_ids = self.results_tree.selection()
-        if not selected_ids:
-            return self.current_records
-
-        dialog = ctk.CTkToplevel(self)
-        dialog.title("Confirmar Exportación")
-        dialog.geometry("350x150")
-        dialog.transient(self)
-        dialog.grab_set()
-        # Asignar icono
-        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
-        if os.path.exists(icon_ico):
+            logger.exception("Error obteniendo créditos")
+            lang = self.languages.get(self.current_language, self.languages["es"])
+            self.credits_label.configure(text=f"{lang['Créditos']} Error")
+    
+    def manage_api_key(self):
+        """Gestionar clave API"""
+        dialog = ui_components.ApiKeyDialog(self, self.api_key)
+        new_key = dialog.get_result()
+        
+        if new_key is not None:
+            self.api_key = new_key
             try:
-                dialog.iconbitmap(icon_ico)
+                set_key(self.config_file, 'INTELX_API_KEY', self.api_key)
+                if self.api_key:
+                    self.refresh_credits()
             except Exception as e:
-                print(f"No se pudo asignar el icono a la ventana de diálogo: {e}")
-        result = ["all"]
-        def set_choice(choice):
-            result[0] = choice
-            dialog.destroy()
-        label = ctk.CTkLabel(dialog, text="Hay filas seleccionadas. ¿Qué deseas exportar?", font=self.fonts["main"])
-        label.pack(pady=20)
-        button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        button_frame.pack(pady=10)
-        btn_selected = ctk.CTkButton(button_frame, text=f"Solo Selección ({len(selected_ids)})", command=lambda: set_choice("selected"), font=self.fonts["main"])
-        btn_selected.pack(side="left", padx=10)
-        btn_all = ctk.CTkButton(button_frame, text=f"Todo ({len(self.current_records)})", command=lambda: set_choice("all"), font=self.fonts["main"])
-        btn_all.pack(side="left", padx=10)
-        self.wait_window(dialog)
-        if result[0] == "selected":
-            return [rec for rec in self.current_records if rec.get('systemid') in selected_ids]
-        else:
-            return self.current_records
-
-    def export_to_csv_safe(self):
-        records_to_export = self._get_records_to_export()
-        if not records_to_export:
-            self._show_custom_messagebox("Sin Datos", "No hay resultados para exportar.", mtype="warning")
-            return
-        
-        term = self.term_entry.get().strip().replace('@', '_at_').replace('.', '_dot_')
-        timestamp = datetime.now().strftime("%Y%m%d")
-        default_filename = f"intelx_{term}_{timestamp}.csv"
-        
-        exports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "exports", "csv")
-        os.makedirs(exports_dir, exist_ok=True)
-
-        filepath = filedialog.asksaveasfilename(
-            initialdir=exports_dir,
-            initialfile=default_filename,
-            defaultextension=".csv",
-            filetypes=[("Archivos CSV", "*.csv"), ("Todos los archivos", "*.*")]
-        )
-        if not filepath:
-            return
-        
+                logger.exception("Error guardando API key")
+    
+    def open_intelx_api_page(self):
+        """Abrir página de API de IntelX"""
+        webbrowser.open("https://intelx.io/account?tab=developer")
+    
+    def show_about(self):
+        """Mostrar información sobre la aplicación"""
+        ui_components.AboutDialog(self, self.app_version, self.current_language)
+    
+    # Event handlers
+    def on_item_double_click(self, event):
+        """Manejar doble clic en item"""
+        self.preview_selected()
+    
+    def show_context_menu(self, event):
+        """Mostrar menú contextual"""
         try:
-            with open(filepath, 'w', newline='', encoding='utf-8-sig') as csvfile:
-                fieldnames = ["Fecha Aproximada", "Titulo", "Fuente (Bucket)", "System ID", "Tipo de Medio"]
-                writer = csv.writer(csvfile)
-                writer.writerow(fieldnames)
-                for record in records_to_export:
-                    row = [
-                        record.get('date', 'N/A'),
-                        record.get('name', 'Sin Título') or "Sin Título",
-                        record.get('bucket', 'N/A'),
-                        record.get('systemid', 'N/A'),
-                        MEDIA_TYPE_MAP.get(record.get('media'), 'Desconocido')
-                    ]
-                    writer.writerow(row)
-            self._show_export_success_dialog(filepath)
-        except IOError as e:
-            self._show_custom_messagebox("Error de Exportación", f"No se pudo escribir en el archivo:\n{e}", mtype="error")
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+    
+    def preview_selected(self):
+        """Preview del item seleccionado"""
+        selection = self.results_tree.selection()
+        if not selection:
+            return
+            
+        # Obtener datos del item seleccionado
+        item = self.results_tree.item(selection[0])
+        values = item['values']
+        
+        if values:
+            record_id = values[-1]  # El systemid está en la última columna
+            # Buscar record completo usando la función auxiliar
+            record = self._find_record_by_id(record_id)
+            
+            if record:
+                # Crear ventana de preview (implementar según necesidades)
+                self._show_preview_window(record)
+    
+    def _show_preview_window(self, record):
+        """Mostrar ventana de preview"""
+        preview_window = ui_components.PreviewWindow(self, record)
+        self.preview_windows[record.get('storageid', '')] = preview_window
+    
+    def _on_preview_close(self, storage_id):
+        """Callback cuando se cierra preview"""
+        if storage_id in self.preview_windows:
+            del self.preview_windows[storage_id]
+    
+    def select_all(self):
+        """Seleccionar todos los items"""
+        for item in self.results_tree.get_children():
+            self.results_tree.selection_add(item)
+    
+    def deselect_all(self):
+        """Deseleccionar todos los items"""
+        self.results_tree.selection_remove(self.results_tree.selection())
+    
+    def copy_selected(self):
+        """Copiar selección al clipboard"""
+        selection = self.results_tree.selection()
+        if not selection:
+            return
+            
+        copied_data = []
+        for item_id in selection:
+            item = self.results_tree.item(item_id)
+            copied_data.append('\t'.join(str(v) for v in item['values']))
+        
+        self.clipboard_clear()
+        self.clipboard_append('\n'.join(copied_data))
+    
+    def export_selection(self):
+        """Exportar selección"""
+        selection = self.results_tree.selection()
+        if not selection:
+            messagebox.showwarning("Error", "No hay elementos seleccionados")
+            return
+        
+        # Obtener records seleccionados
+        selected_records = []
+        for item_id in selection:
+            item = self.results_tree.item(item_id)
+            values = item['values']
+            if values:
+                record_id = values[-1]  # El systemid está en la última columna
+                record = self._find_record_by_id(record_id)
+                if record:
+                    selected_records.append(record)
+        
+        if selected_records:
+            # Usar dialogo de exportación
+            ui_components.show_export_selection_dialog(self, selected_records)
+
+    # --- Export methods (using modular architecture) ---
+    def export_to_csv_safe(self):
+        """Exportar a CSV usando módulo de exportación"""
+        try:
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                return
+            
+            # Get selection if any  
+            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
+            
+            # Ask user what to export if there are selections
+            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
+            if not records_to_export:
+                return
+                
+            # Get search term for filename
+            search_term = self.term_entry.get().strip() or 'IntelX_Export'
+                
+            filepath = exports_module.export_to_csv(records_to_export, search_term)
+            ui_components.show_export_success_dialog(self, filepath)
+            return filepath
+        except Exception as e:
+            logger.exception('Error exporting CSV')
+            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando CSV: {e}', 'error')
 
     def export_to_json_safe(self):
-        records_to_export = self._get_records_to_export()
-        if not records_to_export:
-            self._show_custom_messagebox("Sin Datos", "No hay resultados para exportar.", mtype="warning")
-            return
-
-        term = self.term_entry.get().strip().replace('@', '_at_').replace('.', '_dot_')
-        timestamp = datetime.now().strftime("%Y%m%d")
-        default_filename = f"intelx_{term}_{timestamp}.json"
-
-        exports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "exports", "json")
-        os.makedirs(exports_dir, exist_ok=True)
-
-        filepath = filedialog.asksaveasfilename(
-            initialdir=exports_dir,
-            initialfile=default_filename,
-            defaultextension=".json",
-            filetypes=[("Archivos JSON", "*.json"), ("Todos los archivos", "*.*")]
-        )
-
-        if not filepath:
-            return
-
+        """Exportar a JSON usando módulo de exportación"""
         try:
-            with open(filepath, 'w', encoding='utf-8') as jsonfile:
-                json.dump(records_to_export, jsonfile, indent=4, ensure_ascii=False)
-            self._show_export_success_dialog(filepath)
-        except IOError as e:
-            self._show_custom_messagebox("Error de Exportación", f"No se pudo escribir en el archivo:\n{e}", mtype="error")
-
-    def _show_export_success_dialog(self, filepath: str):
-        dialog = ctk.CTkToplevel(self)
-        dialog.title("Exportación Exitosa")
-        dialog.geometry("400x150")
-        dialog.transient(self)
-        dialog.grab_set()
-        # Asignar icono
-        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
-        if os.path.exists(icon_ico):
-            try:
-                dialog.iconbitmap(icon_ico)
-            except Exception as e:
-                print(f"No se pudo asignar el icono a la ventana de diálogo: {e}")
-        dialog.grid_columnconfigure(0, weight=1)
-        dialog.grid_rowconfigure(0, weight=1)
-        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        main_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
-        main_frame.grid_columnconfigure(0, weight=1)
-        message_label = ctk.CTkLabel(main_frame, text=f"Registros exportados a:\n{os.path.basename(filepath)}", font=self.fonts["main"])
-        message_label.pack(pady=(10, 20))
-        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        button_frame.pack(pady=10)
-        def open_folder():
-            try:
-                os.startfile(os.path.dirname(filepath))
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo abrir la carpeta:\n{e}", parent=dialog)
-            dialog.destroy()
-        open_button = ctk.CTkButton(button_frame, text="Abrir Carpeta", command=open_folder, font=self.fonts["main"])
-        open_button.pack(side="left", padx=10)
-        ok_button = ctk.CTkButton(button_frame, text="OK", command=dialog.destroy, font=self.fonts["main"])
-        ok_button.pack(side="left", padx=10)
-
-    def _show_about_dialog(self):
-        dialog = ctk.CTkToplevel(self)
-        dialog.title("Acerca de IntelX Checker")
-        dialog.geometry("400x320")
-        dialog.transient(self)
-        dialog.grab_set()
-        # Asignar icono
-        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
-        if os.path.exists(icon_ico):
-            try:
-                dialog.iconbitmap(icon_ico)
-            except Exception as e:
-                print(f"No se pudo asignar el icono a la ventana de diálogo: {e}")
-        dialog.grid_columnconfigure(0, weight=1)
-        title_label = ctk.CTkLabel(dialog, text="IntelX Checker", font=ctk.CTkFont(size=20, weight="bold"))
-        title_label.grid(row=0, column=0, padx=20, pady=(20, 10))
-        version_label = ctk.CTkLabel(dialog, text=f"Versión {self.app_version}", font=self.fonts["secondary"])
-        version_label.grid(row=1, column=0, padx=20, pady=0)
-        separator = ttk.Separator(dialog, orient="horizontal")
-        separator.grid(row=2, column=0, padx=20, pady=15, sticky="ew")
-        created_by_label = ctk.CTkLabel(dialog, text="Creado por:", font=self.fonts["main"])
-        created_by_label.grid(row=3, column=0, padx=20, pady=(0, 10))
-        author_label = ctk.CTkLabel(dialog, text="Diego A. Rábalo", font=self.fonts["main_bold"])
-        author_label.grid(row=4, column=0, padx=20, pady=0)
-        job_title_label = ctk.CTkLabel(dialog, text="Criminólogo & Python Developer", font=self.fonts["secondary"], text_color="gray")
-        job_title_label.grid(row=5, column=0, padx=20, pady=(0, 10))
-        links_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        links_frame.grid(row=6, column=0)
-        github_link = ctk.CTkLabel(links_frame, text="GitHub", text_color="#60A5FA", cursor="hand2", font=self.fonts["secondary"])
-        github_link.pack(side="left", padx=10)
-        github_link.bind("<Button-1>", lambda event: webbrowser.open("https://github.com/mikear"))
-        linkedin_link = ctk.CTkLabel(links_frame, text="LinkedIn", text_color="#60A5FA", cursor="hand2", font=self.fonts["secondary"])
-        linkedin_link.pack(side="left", padx=10)
-        linkedin_link.bind("<Button-1>", lambda event: webbrowser.open("https://www.linkedin.com/in/rabalo"))
-        email_link = ctk.CTkLabel(links_frame, text="Email", text_color="#60A5FA", cursor="hand2", font=self.fonts["secondary"])
-        email_link.pack(side="left", padx=10)
-        email_link.bind("<Button-1>", lambda event: webbrowser.open("mailto:diego_rabalo@hotmail.com"))
-        ok_button = ctk.CTkButton(dialog, text="OK", command=dialog.destroy, width=100, font=self.fonts["main"])
-        ok_button.grid(row=7, column=0, padx=20, pady=20, sticky="s")
-        dialog.grid_rowconfigure(7, weight=1)
-
-    def _manage_api_key(self):
-        dialog = ctk.CTkToplevel(self)
-        dialog.title("Gestionar Clave API de IntelX")
-        dialog.geometry("450x200")
-        dialog.transient(self)
-        dialog.grab_set()
-
-        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
-        if os.path.exists(icon_ico):
-            try:
-                dialog.iconbitmap(icon_ico)
-            except Exception as e:
-                print(f"No se pudo asignar el icono a la ventana de diálogo: {e}")
-
-        dialog.grid_columnconfigure(0, weight=1)
-        
-        label = ctk.CTkLabel(dialog, text="Introduce tu clave API de Intelligence X:", font=self.fonts["main"])
-        label.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
-
-        api_key_entry = ctk.CTkEntry(dialog, width=400, font=self.fonts["main"])
-        api_key_entry.grid(row=1, column=0, padx=20, pady=5, sticky="ew")
-        if self.intelx_api_key:
-            api_key_entry.insert(0, self.intelx_api_key)
-
-        button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        button_frame.grid(row=2, column=0, padx=20, pady=20, sticky="e")
-
-        def save_key():
-            new_key = api_key_entry.get().strip()
-            if new_key:
-                self.intelx_api_key = new_key
-                self._has_api_key = True
-                env_path = find_dotenv(filename='.env', raise_error_if_not_found=False)
-                if not env_path:
-                    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
-                    with open(env_path, "w") as f:
-                        f.write("# .env file\n")
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                return
+            
+            # Get selection if any  
+            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
+            
+            # Ask user what to export if there are selections
+            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
+            if not records_to_export:
+                return
                 
-                set_key(env_path, 'INTELX_API_KEY', new_key)
+            # Get search term for filename
+            search_term = self.term_entry.get().strip() or 'IntelX_Export'
                 
-                self._fetch_and_display_credits_safe()
-                self._show_custom_messagebox("Éxito", "Clave API guardada correctamente.", mtype="info")
-            else:
-                self.intelx_api_key = None
-                self._has_api_key = False
-                self._update_credits_label("Créditos: N/A (Sin Clave)")
-                self._show_custom_messagebox("Advertencia", "La clave API ha sido eliminada.", mtype="warning")
-            dialog.destroy()
-
-        def cancel():
-            dialog.destroy()
-
-        save_btn = ctk.CTkButton(button_frame, text="Guardar", command=save_key, font=self.fonts["main"])
-        save_btn.pack(side="left", padx=10)
-        
-        cancel_btn = ctk.CTkButton(button_frame, text="Cancelar", command=cancel, fg_color="gray", font=self.fonts["main"])
-        cancel_btn.pack(side="left", padx=10)
-
-    def _configure_buckets_dialog(self):
-        dialog = ctk.CTkToplevel(self)
-        dialog.title("Configurar Fuentes de Búsqueda")
-        dialog.geometry("480x450")
-        dialog.transient(self)
-        dialog.grab_set()
-        # Asignar icono
-        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
-        if os.path.exists(icon_ico):
-            try:
-                dialog.iconbitmap(icon_ico)
-            except Exception as e:
-                print(f"No se pudo asignar el icono a la ventana de diálogo: {e}")
-        dialog.grid_columnconfigure(0, weight=1)
-        dialog.grid_rowconfigure(0, weight=1)
-        scroll_frame = ctk.CTkScrollableFrame(dialog, label_text="Selecciona las fuentes a consultar", label_font=self.fonts["main"])
-        scroll_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        scroll_frame.grid_columnconfigure(0, weight=1)
-        vars = {}
-        for i, (display_name, bucket_id, description) in enumerate(self.available_buckets_for_ui):
-            var = ctk.StringVar(value="on" if bucket_id in self.selected_buckets_config else "off")
-            cb = ctk.CTkCheckBox(scroll_frame, text=display_name, variable=var, onvalue="on", offvalue="off", font=self.fonts["dialog_header"])
-            cb.grid(row=i*2, column=0, sticky="w", padx=10, pady=(10,0))
-            desc = ctk.CTkLabel(scroll_frame, text=description, text_color="gray", font=self.fonts["dialog_body"], wraplength=380, justify="left")
-            desc.grid(row=i*2+1, column=0, sticky="w", padx=25, pady=(0,10))
-            vars[bucket_id] = var
-        button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        button_frame.grid(row=1, column=0, padx=10, pady=10, sticky="e")
-        def save():
-            self.selected_buckets_config = [b_id for b_id, v in vars.items() if v.get() == "on"]
-            dialog.destroy()
-        def cancel():
-            dialog.destroy()
-        save_btn = ctk.CTkButton(button_frame, text="Guardar", command=save, width=100, font=self.fonts["main"])
-        save_btn.pack(side="left", padx=5)
-        cancel_btn = ctk.CTkButton(button_frame, text="Cancelar", command=cancel, fg_color="gray", width=100, font=self.fonts["main"])
-        cancel_btn.pack(side="left", padx=5)
-
-    def _on_preview_close(self, storage_id: str):
-        if storage_id in self.preview_windows:
-            window = self.preview_windows[storage_id]
-            try:
-                if window and window.winfo_exists():
-                    window.destroy()
-            except Exception:
-                pass
-            finally:
-                del self.preview_windows[storage_id]
-
-    def _show_custom_messagebox(self, title, message, mtype="info"):
-        dialog = ctk.CTkToplevel(self)
-        dialog.title(title)
-        dialog.geometry("400x180")
-        dialog.transient(self)
-        dialog.grab_set()
-        icon_ico = os.path.join(os.path.dirname(__file__), "..", "docs", "icon.ico")
-        if os.path.exists(icon_ico):
-            try:
-                dialog.iconbitmap(icon_ico)
-            except Exception as e:
-                print(f"No se pudo asignar el icono a la ventana de diálogo: {e}")
-        color = {"info": "#2563eb", "warning": "#f59e42", "error": "#ef4444"}.get(mtype, "#2563eb")
-        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        main_frame.pack(expand=True, fill="both", padx=20, pady=20)
-        label = ctk.CTkLabel(main_frame, text=message, font=self.fonts["main"], text_color=color, wraplength=350, justify="left")
-        label.pack(pady=(10, 20))
-        ok_btn = ctk.CTkButton(main_frame, text="OK", command=dialog.destroy, font=self.fonts["main"])
-        ok_btn.pack(pady=10)
-
-    def _fetch_and_display_credits_safe(self):
-        if not hasattr(self, 'intelx_api_key') or not self.intelx_api_key:
-            self._update_credits_label("Créditos: N/A (Sin Clave)")
-            return
-        threading.Thread(target=self._fetch_credits_task, daemon=True).start()
-
-    def _fetch_credits_task(self):
-        try:
-            headers = {'x-key': self.intelx_api_key, 'User-Agent': f"{USER_AGENT}/CreditCheck"}
-            response = requests.get(INTELX_API_URL_AUTH_INFO, headers=headers, timeout=REQUEST_TIMEOUT_AUTH)
-            response.raise_for_status()
-            data = response.json()
-            paths = data.get("paths", {})
-            search_credits_info = paths.get("/intelligent/search", {})
-            credit_val = search_credits_info.get("Credit", "N/A")
-            credits_text = f"Créditos de Búsqueda: {credit_val}"
+            filepath = exports_module.export_to_json(records_to_export, search_term)
+            ui_components.show_export_success_dialog(self, filepath)
+            return filepath
         except Exception as e:
-            logger.error(f"Error al consultar créditos: {e}")
-            credits_text = "Créditos: Error"
-        self.after(0, lambda: self._update_credits_label(credits_text))
+            logger.exception('Error exporting JSON')
+            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando JSON: {e}', 'error')
 
-    def _update_status_label(self, text: str):
-        self.status_label.configure(text=text)
+    def export_to_html_safe(self):
+        """Generate a Mandiant-style HTML report using modular architecture"""
+        try:
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                return
 
-    def _update_gui_state(self):
-        is_searching = hasattr(self, '_is_searching') and self._is_searching
-        state = "disabled" if is_searching else "normal"
-        self.check_button.configure(state=state)
-        self.term_entry.configure(state=state)
-        self.cancel_button.configure(state="normal" if is_searching else "disabled")
+            search_term = self.term_entry.get().strip() or "búsqueda_sin_nombre"
+            timestamp = datetime.utcnow()
 
-    def _update_credits_label(self, text: str):
-        self.credits_info_label.configure(text=text)
+            # Create export path
+            exports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "exports", "html")
+            os.makedirs(exports_dir, exist_ok=True)
 
-    def get_api_key_link(self):
-        import webbrowser
-        webbrowser.open("https://intelx.io/account?tab=developer")
+            safe_search = sanitize_filename(search_term)
+            filename = f"IntelX_Report_{safe_search}_{timestamp.strftime('%Y%m%d_%H%M%S')}.html"
+            filepath = os.path.join(exports_dir, filename)
+
+            # Prepare analysis using modular functions
+            analysis = analyze_results_for_report(self.current_records)
+            html_content = generate_modern_html_content(search_term, analysis, timestamp, self.current_records)
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            # Show success dialog
+            ui_components.show_export_success_dialog(self, filepath)
+            
+            # Ask if user wants to open
+            if messagebox.askyesno("Reporte HTML", "¿Desea abrir el reporte en su navegador?"):
+                open_in_browser(filepath)
+
+            logger.info(f"Reporte HTML generado: {filepath}")
+            return filepath
+
+        except Exception as e:
+            logger.exception("Error generando reporte HTML")
+            ui_components.show_custom_messagebox(self, "Error", f"Error generando reporte: {e}", "error")
+
+    def export_to_pdf_safe(self):
+        """Exportar a PDF usando módulo de exportación"""
+        try:
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                return
+            
+            # Get selection if any  
+            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
+                
+            # Ask user what to export if there are selections
+            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
+            if not records_to_export:
+                return
+                
+            # Get search term for title
+            search_term = self.term_entry.get().strip() or 'IntelX Report'
+                
+            filepath = exports_module.generate_pdf_report(records_to_export, title=search_term)
+            ui_components.show_export_success_dialog(self, filepath)
+            return filepath
+        except Exception as e:
+            logger.exception('Error exporting PDF')
+            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando PDF: {e}', 'error')
+
+
+# Provide compatibility for scripts that import the class directly
+if __name__ == '__main__':
+    app = IntelXCheckerApp()
+    app.mainloop()

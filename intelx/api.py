@@ -37,15 +37,41 @@ USER_AGENT: str = "Python-CustomTkinter-IntelX-Checker-App/1.3.2"
 DEFAULT_DATE_MIN: datetime = datetime(MINYEAR, 1, 1, tzinfo=timezone.utc)
 DEFAULT_DATE_MAX: datetime = datetime(MAXYEAR, 12, 31, tzinfo=timezone.utc)
 
-# --- Mapeo de Media Type ---
+# --- Mapeo completo de Media Type según documentación oficial de IntelX SDK ---
 MEDIA_TYPE_MAP: Dict[int, str] = {
-    0: "Invalid/Not Set", 1: "Paste Document", 2: "Paste User", 3: "Forum", 4: "Forum Board",
-    5: "Forum Thread", 6: "Forum Post", 7: "Forum User", 8: "Screenshot of a Website",
-    9: "HTML copy of a Website", 10: "Invalid (Do Not Use)", 11: "Invalid (Do Not Use)",
-    12: "Tweet", 13: "Tweet", 14: "URL (High-Level Item)", 15: "PDF document",
-    16: "Word document", 17: "Excel document", 18: "Powerpoint document", 19: "Picture",
-    20: "Audio file", 21: "Video file", 22: "Container file (ZIP, RAR, etc)",
-    23: "HTML file", 24: "Text file", 27: "Código Fuente", 32: "Código Fuente",
+    0: "All/Not Set",
+    1: "Paste Document", 
+    2: "Paste User",
+    3: "Forum",
+    4: "Forum Board",
+    5: "Forum Thread",
+    6: "Forum Post",
+    7: "Forum User",
+    8: "Screenshot of Website",
+    9: "HTML copy of Website",
+    10: "Text copy of Website",  # Mencionado en PHP SDK pero marcado como inválido en Python
+    11: "Invalid/Do Not Use",
+    12: "Invalid/Do Not Use", 
+    13: "Tweet",
+    14: "URL (High-Level Item)",
+    15: "PDF Document",
+    16: "Word Document",
+    17: "Excel Document", 
+    18: "PowerPoint Document",
+    19: "Picture",
+    20: "Audio File",
+    21: "Video File",
+    22: "Container File (ZIP/RAR/TAR)",
+    23: "HTML File",
+    24: "Text File",
+    25: "Ebook",  # Encontrado en FILE_VIEW función
+    26: "Unknown Media Type",
+    27: "Source Code",
+    28: "Unknown Media Type",
+    29: "Unknown Media Type", 
+    30: "Unknown Media Type",
+    31: "Unknown Media Type",
+    32: "Source Code",  # Encontrado en mapeo actual
 }
 
 # --- Funciones de Lógica API ---
@@ -269,3 +295,76 @@ def retrieve_intelx_results(
         else:
             logging.error(f"ID {search_id}: Estado inesperado o fallido encontrado: {current_status}")
             return False, f"Error: Estado de búsqueda inesperado o fallido ({current_status})."
+
+def get_api_credits(api_key: str) -> Tuple[bool, Union[int, str]]:
+    """
+    Obtiene los créditos restantes de la API de IntelX usando el endpoint /authenticate/info.
+    Basado en el SDK oficial de IntelX que usa GET_CAPABILITIES().
+    
+    Returns:
+        Tuple[bool, Union[int, str]]: (success, credits_or_error_message)
+    """
+    if not api_key:
+        return False, "Clave API no proporcionada"
+    
+    headers = {'x-key': api_key, 'User-Agent': USER_AGENT}
+    
+    try:
+        response = requests.get(
+            INTELX_API_URL_AUTH_INFO,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT_AUTH
+        )
+        response.raise_for_status()
+        
+        auth_info = response.json()
+        
+        # Extraer créditos del endpoint de búsqueda según la estructura real de la API
+        credits = 0
+        if 'paths' in auth_info and '/intelligent/search' in auth_info['paths']:
+            search_info = auth_info['paths']['/intelligent/search']
+            credits = search_info.get('Credit', 0)
+            
+        # Si no se encuentran créditos en paths, intentar campos directos
+        if credits == 0:
+            credits = auth_info.get('credits', 0)
+            if credits == 0:
+                credits = auth_info.get('dailySearchCredits', 0)
+            if credits == 0:
+                credits = auth_info.get('searchCredits', 0)
+        
+        logging.info(f"Créditos de búsqueda disponibles: {credits}")
+        return True, credits
+        
+    except requests.exceptions.HTTPError as err:
+        status_code = err.response.status_code
+        try:
+            error_detail = err.response.json().get('error', err.response.text)
+        except json.JSONDecodeError:
+            error_detail = err.response.text
+        
+        logging.error(f"Error HTTP {status_code} obteniendo créditos: {error_detail}")
+        
+        if status_code == 401:
+            return False, "Clave API inválida"
+        elif status_code == 402:
+            return False, "Sin créditos disponibles"
+        else:
+            return False, f"Error {status_code}: {error_detail[:100]}"
+            
+    except requests.exceptions.Timeout:
+        logging.error(f"Timeout ({REQUEST_TIMEOUT_AUTH}s) obteniendo créditos.")
+        return False, f"Timeout al obtener créditos"
+        
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error de conexión obteniendo créditos: {e}")
+        return False, f"Error de conexión: {e}"
+        
+    except json.JSONDecodeError:
+        resp_text = response.text if response else "N/A"
+        logging.error(f"Error decodificando JSON de créditos. Respuesta: {resp_text[:200]}...")
+        return False, "Error procesando respuesta de créditos"
+        
+    except Exception as e:
+        logging.exception(f"Error inesperado obteniendo créditos: {e}")
+        return False, f"Error inesperado: {e}"
