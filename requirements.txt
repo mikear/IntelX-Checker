@@ -15,4 +15,4 @@ Pillow>=10.0.0
 # HTML rendering in Tkinter
 # Para mostrar manual y glosario con formato y scroll
 markdown2>=2.4.12
-tkhtmlview>=0.3.1
+tkhtmlview>=1.3.0
