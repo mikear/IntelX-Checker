@@ -41,9 +41,9 @@ except ImportError:
     ImageTk = None
 
 # Imports de módulos propios
-from .api import IntelXAPI, MEDIA_TYPE_MAP
-from .analysis import extract_iocs
-from .html_report import generate_html_report
+from .api import check_intelx, retrieve_intelx_results, get_api_credits, MEDIA_TYPE_MAP, INTELX_API_URL_AUTH_INFO, INTELX_API_URL_TERMINATE, INTELX_API_URL_FILE_PREVIEW, USER_AGENT, REQUEST_TIMEOUT_AUTH, REQUEST_TIMEOUT_TERMINATE, REQUEST_TIMEOUT_PREVIEW, INTELX_RATE_LIMIT_DELAY, DEFAULT_DATE_MIN, DEFAULT_DATE_MAX
+from .analysis import analyze_results_for_report, extract_iocs, clean_data_for_mandiant_report, prepare_mandiant_chart_data
+from .reporting import generate_modern_html_content, generate_executive_summary_html, generate_iocs_html, generate_data_table_html
 from .utils import sanitize_filename, open_in_browser
 from . import exports as exports_module
 from . import ui_components
@@ -59,17 +59,6 @@ class IntelXCheckerApp(ctk.CTk):
         super().__init__()
         self.preview_windows = {}
         self.title("IntelX Checker V2")
-        # Establecer icono de la aplicación si existe
-        try:
-            # Compatibilidad con PyInstaller (atributo _MEIPASS) y modo script
-            base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(__file__)))
-            icon_path = os.path.join(base_dir, 'docs', 'icon.ico')
-            if os.path.exists(icon_path):
-                self.iconbitmap(icon_path)
-            else:
-                logger.debug(f"Icono no encontrado en ruta esperada: {icon_path}")
-        except Exception as _icon_err:
-            logger.debug(f"No se pudo establecer el icono: {_icon_err}")
         self.geometry("800x600")
         self.minsize(600, 400)
         self.current_language = "es"
@@ -156,9 +145,6 @@ class IntelXCheckerApp(ctk.CTk):
         self.stop_search = False
         self.cancel_event = None
         self.config_file = os.path.join(os.path.dirname(__file__), '..', '.env')
-        self.sort_column = "date"
-        self.sort_reverse = True
-        self.all_records = []
         
         # Crear UI
         self._setup_ui()
@@ -212,14 +198,6 @@ class IntelXCheckerApp(ctk.CTk):
         self.filter_entry.pack(side="left", padx=(10, 5), expand=True, fill="x")
         self.filter_entry.bind("<KeyRelease>", self.filter_results)
         
-        # Year filter
-        self.year_entry = ctk.CTkEntry(filter_frame, placeholder_text="Año", width=80)
-        self.year_entry.pack(side="left", padx=5)
-        self.filter_year_button = ctk.CTkButton(filter_frame, text="Filtrar Año", command=self._filter_by_year, width=100)
-        self.filter_year_button.pack(side="left", padx=5)
-        self.clear_year_filter_button = ctk.CTkButton(filter_frame, text="Limpiar", command=self._clear_year_filter, width=80)
-        self.clear_year_filter_button.pack(side="left", padx=5)
-        
         # Label de créditos
         self.credits_label = ctk.CTkLabel(filter_frame, text="Créditos: 0", font=self.fonts["secondary"])
         self.credits_label.pack(side="right", padx=(5, 10))
@@ -250,7 +228,7 @@ class IntelXCheckerApp(ctk.CTk):
         }
         
         for col in columns:
-            self.results_tree.heading(col, text=col.capitalize(), anchor="w", command=lambda c=col: self._sort_by_column(c, False))
+            self.results_tree.heading(col, text=col.capitalize(), anchor="w")
             width = column_widths.get(col, 120)
             self.results_tree.column(col, width=width, minwidth=60)
         
@@ -291,9 +269,10 @@ class IntelXCheckerApp(ctk.CTk):
         # Menú Archivo
         file_menu = Menu(menubar, tearoff=0, font=self.fonts["menu"])
         menubar.add_cascade(label="Archivo", menu=file_menu)
-        file_menu.add_command(label="Exportar a CSV...", command=self.export_to_csv)
-        file_menu.add_command(label="Exportar a JSON...", command=self.export_to_json)
-        file_menu.add_command(label="Exportar a HTML...", command=self.export_to_html)
+        file_menu.add_command(label="Exportar a CSV...", command=self.export_to_csv_safe)
+        file_menu.add_command(label="Exportar a JSON...", command=self.export_to_json_safe)
+        file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf_safe)
+        file_menu.add_command(label="Exportar a HTML...", command=self.export_to_html_safe)
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.quit)
         
@@ -378,81 +357,85 @@ class IntelXCheckerApp(ctk.CTk):
             self.results_tree.heading(col, text=header)
     
     def _load_api_config(self):
-        """Cargar configuración de API y crear cliente."""
+        """Cargar configuración de API"""
         try:
             load_dotenv(self.config_file)
             self.api_key = os.getenv('INTELX_API_KEY', '')
             if self.api_key:
-                self.api_client = IntelXAPI(self.api_key)
                 self.refresh_credits()
-            else:
-                self.api_client = None
-        except Exception as e:
-            logger.error(f"Error al cargar la configuración de la API: {e}")
+        except:
             self.api_key = ''
-            self.api_client = None
     
     def search_intelx(self):
-        """Inicia una búsqueda en IntelX en un hilo para evitar congelar la UI."""
+        """Buscar en IntelX"""
         term = self.term_entry.get().strip()
         if not term:
             messagebox.showwarning("Error", "Ingrese un término de búsqueda")
             return
-        if not self.api_client:
+        
+        if not self.api_key:
             messagebox.showwarning("Error", "Configure su clave API primero")
             self.manage_api_key()
             return
-
-        # Async refresh de créditos (no bloquea la UI)
-        self.refresh_credits_async()
-
+        
+        # Actualizar créditos antes de iniciar la búsqueda
+        self.refresh_credits()
+        
         # Limpiar resultados anteriores
         for item in self.results_tree.get_children():
             self.results_tree.delete(item)
+        
         self.current_records = []
         self.stop_search = False
-
-        # Estado inicial UI
+        
+        # Actualizar UI
         self.search_button.configure(state="disabled")
         self.cancel_button.configure(state="normal")
         self.status_label.configure(text="Iniciando búsqueda...")
         self.progress_bar.set(0.1)
-
-        self.cancel_event = threading.Event()
-
-        # Lanzar hilo de búsqueda
-        self.search_thread = threading.Thread(target=self._search_worker, args=(term, self.cancel_event))
+        
+        # Iniciar búsqueda en hilo separado
+        self.search_thread = threading.Thread(target=self._search_worker, args=(term,))
         self.search_thread.daemon = True
         self.search_thread.start()
     
-    def _search_worker(self, term, cancel_event):
+    def _search_worker(self, term):
         """Worker para búsqueda en hilo separado"""
         try:
+            # Progreso inicial
             self.after(0, lambda: self.progress_bar.set(0.3))
             self.after(0, lambda: self.status_label.configure(text="Conectando con IntelX..."))
             
-            # Usar el cliente de API
-            success, data_or_error, search_id = self.api_client.search(term, selected_buckets=self._get_selected_buckets(), cancel_event=cancel_event)
+            # Usar módulo API - la función check_intelx ahora retorna (success, data, search_id)
+            success, data_or_error, search_id = check_intelx(term, self.api_key)
             
+            # Progreso medio
             self.after(0, lambda: self.progress_bar.set(0.7))
             
             if success:
                 self.after(0, lambda: self.status_label.configure(text="Procesando resultados..."))
                 
-                # Normalizar los resultados a una lista de diccionarios
-                normalized_records = self._normalize_records(data_or_error)
-                self.current_records = normalized_records
-                self.all_records = list(normalized_records) # Copia para el filtro
+                # Si data es un dict con 'records', usar esos registros
+                if isinstance(data_or_error, dict) and 'records' in data_or_error:
+                    self.current_records = data_or_error['records']
+                elif isinstance(data_or_error, list):
+                    self.current_records = data_or_error
+                elif isinstance(data_or_error, dict):
+                    # Asumir que es el resultado directo
+                    self.current_records = [data_or_error]
+                else:
+                    self.current_records = []
                 
+                # Progreso final
                 self.after(0, lambda: self.progress_bar.set(1.0))
                 
                 if self.current_records and not self.stop_search:
-                    # Poblar de forma incremental para evitar congelar la UI
-                    self.after(0, lambda: self._populate_results_chunked(self.current_records))
-                    self.after(0, lambda: self.status_label.configure(text=f"Insertando {len(self.current_records)} resultados..."))
+                    self.after(0, self._populate_results)
+                    self.after(0, lambda: self.status_label.configure(text=f"Encontrados {len(self.current_records)} resultados"))
                 else:
                     self.after(0, lambda: self.status_label.configure(text="No se encontraron resultados"))
             else:
+                # Error en la búsqueda
                 error_msg = data_or_error if isinstance(data_or_error, str) else "Error en la búsqueda"
                 self.after(0, lambda: self.status_label.configure(text=error_msg))
                 self.after(0, lambda: self.progress_bar.set(0))
@@ -463,75 +446,53 @@ class IntelXCheckerApp(ctk.CTk):
             self.after(0, lambda: self.progress_bar.set(0))
         finally:
             self.after(0, self._search_finished)
-
-    def _get_selected_buckets(self) -> Optional[List[str]]:
-        """
-        Obtiene la lista de buckets de búsqueda seleccionados desde la configuración.
-        Este es un placeholder. La lógica real para seleccionar buckets
-        debería implementarse en un diálogo de configuración.
-        """
-        # Por ahora, devuelve None para buscar en todos los buckets.
-        # TODO: Implementar un diálogo para que el usuario seleccione buckets.
-        return None
-
-    def _normalize_records(self, data: Union[Dict, List, str, None]) -> List[Dict]:
-        """
-        Normaliza los datos de los registros a una lista de diccionarios.
-        Maneja diferentes formatos de entrada (dict, list, str).
-        """
-        if not data:
-            return []
-
-        if isinstance(data, dict) and 'records' in data:
-            raw_records = data['records']
-        elif isinstance(data, list):
-            raw_records = data
-        else:
-            # Envuelve cualquier otro tipo en una lista para un manejo uniforme
-            raw_records = [data]
-
-        normalized_list = []
-        for i, record in enumerate(raw_records):
-            if isinstance(record, dict):
-                # Asegurarse de que los campos clave existan con valores por defecto
-                record.setdefault('systemid', record.get('storageid', f'record_{i}'))
-                record.setdefault('name', f'Documento {i+1}')
-                record.setdefault('date', '')
-                record.setdefault('size', 0)
-                record.setdefault('xscore', 0)
-                record.setdefault('bucket', 'unknown')
-                record.setdefault('type', 0)
-                record.setdefault('media', 0)
-                normalized_list.append(record)
-            elif isinstance(record, str):
-                # Convertir un resultado de tipo string a un diccionario estándar
-                normalized_list.append({
-                    'systemid': f'record_{i}',
-                    'name': f'Resultado de texto {i+1}',
-                    'date': '',
-                    'size': len(record),
-                    'xscore': 0,
-                    'bucket': 'unknown',
-                    'type': 1,  # Texto plano
-                    'media': 1, # Paste Document
-                    'data': record # Guardar el contenido original
-                })
-            # Ignorar otros tipos de datos no esperados para evitar errores
-        
-        return normalized_list
-
-    def _populate_results(self, records_to_show):
-        """Poblar treeview con resultados"""
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
-
-        for i, record_dict in enumerate(records_to_show):
+    
+    def _populate_results(self):
+        """Poblar treeview con resultados usando la estructura real de la API de IntelX"""
+        for i, record in enumerate(self.current_records):
             if self.stop_search:
                 break
                 
-            # Fecha formateada
+            # Manejar diferentes tipos de datos de entrada
+            if isinstance(record, str):
+                # Si es string, crear un registro básico
+                record_dict = {
+                    'name': f'Resultado {i+1}',
+                    'type': 1,  # Texto
+                    'media': 1,  # Paste
+                    'bucket': 'unknown',
+                    'size': len(record),
+                    'date': '',
+                    'xscore': 0,
+                    'systemid': f'record_{i}',
+                    'data': record
+                }
+            elif isinstance(record, dict):
+                record_dict = record
+            else:
+                # Fallback para otros tipos
+                record_dict = {
+                    'name': f'Resultado {i+1}',
+                    'type': 0,
+                    'media': 0,
+                    'bucket': 'unknown',
+                    'size': 0,
+                    'date': '',
+                    'xscore': 0,
+                    'systemid': f'record_{i}',
+                    'data': str(record)
+                }
+                
+            # Fecha formateada (primera prioridad)
             date_str = record_dict.get('date', '')
-            date_text = date_str[:19] if date_str and len(date_str) > 19 else (date_str or 'N/A')
+            if date_str:
+                try:
+                    # Formatear fecha si está disponible
+                    date_text = date_str[:19] if len(date_str) > 19 else date_str
+                except:
+                    date_text = date_str
+            else:
+                date_text = 'N/A'
                 
             # Formatear datos basándose en la estructura del diccionario
             name = record_dict.get('name', f'Documento {i+1}')
@@ -541,66 +502,33 @@ class IntelXCheckerApp(ctk.CTk):
             ip_address = self._extract_ip_address(record_dict)
             
             # Tipo de contenido (type)
-            type_text = self._get_type_description(record_dict.get('type', 0))
+            type_val = record_dict.get('type', 0)
+            type_text = self._get_type_description(type_val)
             
             # Media type (más descriptivo)
-            media_text = self._get_media_description(record_dict.get('media', 0))
+            media_val = record_dict.get('media', 0)
+            media_text = self._get_media_description(media_val)
             
             # Bucket con nombre legible
             bucket = record_dict.get('bucket', 'unknown')
             bucket_text = record_dict.get('bucketh', bucket)  # bucketh es el nombre legible
             
             # Tamaño formateado
-            size_text = self._format_file_size(record_dict.get('size', 0))
+            size = record_dict.get('size', 0)
+            size_text = self._format_file_size(size)
             
             # Puntuación de relevancia (xscore)
             score = record_dict.get('xscore', 0)
             score_text = str(score) if score > 0 else 'N/A'
             
             # System ID
-            system_id = record_dict.get('systemid', str(i))
+            system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
             
             # Nuevo orden: fecha, nombre, IP, tipo, media, bucket, tamaño, score, systemid
             self.results_tree.insert("", "end", values=(
                 date_text, name, ip_address, type_text, media_text, 
                 bucket_text, size_text, score_text, system_id
             ))
-
-    def _populate_results_chunked(self, records, batch_size: int = 150, start_index: int = 0):
-        """Inserta resultados en lotes para mantener la UI responsiva."""
-        if self.stop_search:
-            return
-        end = min(start_index + batch_size, len(records))
-        # Insertar lote
-        for i in range(start_index, end):
-            record_dict = records[i]
-            # Fecha
-            date_str = record_dict.get('date', '')
-            date_text = date_str[:19] if date_str and len(date_str) > 19 else (date_str or 'N/A')
-            name = record_dict.get('name', f'Documento {i+1}')
-            name = name[:60] + "..." if len(name) > 60 else name
-            ip_address = self._extract_ip_address(record_dict)
-            type_text = self._get_type_description(record_dict.get('type', 0))
-            media_text = self._get_media_description(record_dict.get('media', 0))
-            bucket = record_dict.get('bucket', 'unknown')
-            bucket_text = record_dict.get('bucketh', bucket)
-            size_text = self._format_file_size(record_dict.get('size', 0))
-            score = record_dict.get('xscore', 0)
-            score_text = str(score) if score > 0 else 'N/A'
-            system_id = record_dict.get('systemid', str(i))
-            self.results_tree.insert("", "end", values=(
-                date_text, name, ip_address, type_text, media_text, bucket_text, size_text, score_text, system_id
-            ))
-        # Actualizar barra de progreso basada en progreso de inserción
-        if len(records) > 0:
-            self.progress_bar.set(end / len(records))
-        # Continuar si faltan registros
-        if end < len(records) and not self.stop_search:
-            self.after(25, lambda: self._populate_results_chunked(records, batch_size, end))
-        else:
-            self.status_label.configure(text=f"Encontrados {len(records)} resultados")
-            # Reset progresivo para liberar visual luego
-            self.after(1500, lambda: self.progress_bar.set(0))
     
     def _extract_ip_address(self, record_dict):
         """Extraer dirección IP del registro"""
@@ -738,104 +666,141 @@ class IntelXCheckerApp(ctk.CTk):
         except (ValueError, TypeError):
             return str(size)
 
-    def _sort_by_column(self, col, reverse):
-        """Sort records by a column."""
-        if self.sort_column == col:
-            reverse = not self.sort_reverse
-        self.sort_column = col
-        self.sort_reverse = reverse
-
-        def sort_key(record):
-            value = record.get(col)
-            if col == 'date':
-                if value:
-                    try:
-                        # Handle different date formats
-                        if 'T' in value and 'Z' in value:
-                            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-                        else:
-                            dt = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
-                            return dt.replace(tzinfo=timezone.utc) # Make it timezone-aware
-                    except (ValueError, TypeError):
-                        return datetime.min.replace(tzinfo=timezone.utc)
-                else:
-                    return datetime.min.replace(tzinfo=timezone.utc)
-            elif col == 'size':
-                return int(record.get('size', 0))
-            elif col == 'score':
-                return int(record.get('xscore', 0))
-            else:
-                return str(record.get(col, '')).lower()
-
-        # Sort the original data
-        self.current_records.sort(key=sort_key, reverse=self.sort_reverse)
-        
-        # Clear and repopulate treeview
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
-        self._populate_results(self.current_records)
-
-        # Update heading command to toggle reverse
-        self.results_tree.heading(col, command=lambda: self._sort_by_column(col, not reverse))
-
-    def _filter_by_year(self):
-        year_str = self.year_entry.get()
-        if not year_str:
-            return
-
-        try:
-            year = int(year_str)
-        except ValueError:
-            messagebox.showerror("Error", "Año inválido.")
-            return
-
-        filtered_records = []
-        for record in self.current_records:
-            record_date_str = record.get('date')
-            if record_date_str:
-                try:
-                    record_date = datetime.fromisoformat(record_date_str.replace("Z", "+00:00"))
-                    if record_date.year == year:
-                        filtered_records.append(record)
-                except (ValueError, TypeError):
-                    continue
-
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
-        
-        original_records = self.current_records
-        self.current_records = filtered_records
-        self._populate_results(filtered_records)
-        self.current_records = original_records
-
-    def _clear_year_filter(self):
-        self.year_entry.delete(0, 'end')
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
-        self._populate_results(self.current_records)
-
     def _search_finished(self):
         """Finalizar búsqueda"""
         self.search_button.configure(state="normal")
         self.cancel_button.configure(state="disabled")
         self.stop_search = False
-        self.cancel_event = None
         # Resetear barra de progreso después de un momento
         self.after(2000, lambda: self.progress_bar.set(0))
         # Actualizar créditos después de la búsqueda
         self.after(1000, self.refresh_credits)
-
-    def on_item_double_click(self, event):
-        """Manejar doble clic en item"""
-        self.preview_selected()
-
-    def show_context_menu(self, event):
-        """Mostrar menú contextual"""
+    
+    def cancel_search(self):
+        """Cancelar búsqueda"""
+        self.stop_search = True
+        # Señalar al evento de cancelación si existe
+        if hasattr(self, 'cancel_event') and self.cancel_event:
+            self.cancel_event.set()
+        self.status_label.configure(text="Búsqueda cancelada")
+        self._search_finished()
+    
+    def filter_results(self, event=None):
+        """Filtrar resultados usando la nueva estructura de columnas"""
+        filter_text = self.filter_entry.get().lower()
+        
+        # Limpiar treeview
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
+        
+        # Volver a poblar con filtro
+        for i, record in enumerate(self.current_records):
+            # Manejar diferentes tipos de datos de entrada
+            if isinstance(record, str):
+                record_dict = {
+                    'name': f'Resultado {i+1}',
+                    'type': 1,
+                    'media': 1,
+                    'bucket': 'unknown',
+                    'size': len(record),
+                    'date': '',
+                    'xscore': 0,
+                    'systemid': f'record_{i}',
+                    'data': record
+                }
+            elif isinstance(record, dict):
+                record_dict = record
+            else:
+                record_dict = {
+                    'name': f'Resultado {i+1}',
+                    'type': 0,
+                    'media': 0,
+                    'bucket': 'unknown',
+                    'size': 0,
+                    'date': '',
+                    'xscore': 0,
+                    'systemid': f'record_{i}',
+                    'data': str(record)
+                }
+            
+            # Buscar en todos los campos del registro
+            record_data = str(record_dict).lower()
+            name = record_dict.get('name', f'Documento {i+1}').lower()
+            bucket = record_dict.get('bucket', '').lower()
+            
+            if (filter_text in record_data or 
+                filter_text in name or 
+                filter_text in bucket):
+                
+                # Fecha formateada (primera prioridad)
+                date_str = record_dict.get('date', '')
+                if date_str:
+                    try:
+                        date_text = date_str[:19] if len(date_str) > 19 else date_str
+                    except:
+                        date_text = date_str
+                else:
+                    date_text = 'N/A'
+                
+                # Recrear la entrada usando los nuevos campos
+                name_display = record_dict.get('name', f'Documento {i+1}')
+                name_display = name_display[:60] + "..." if len(name_display) > 60 else name_display
+                
+                # Extraer IP
+                ip_address = self._extract_ip_address(record_dict)
+                
+                type_val = record_dict.get('type', 0)
+                type_text = self._get_type_description(type_val)
+                
+                media_val = record_dict.get('media', 0)
+                media_text = self._get_media_description(media_val)
+                
+                bucket = record_dict.get('bucket', 'unknown')
+                bucket_text = record_dict.get('bucketh', bucket)
+                
+                size = record_dict.get('size', 0)
+                size_text = self._format_file_size(size)
+                
+                score = record_dict.get('xscore', 0)
+                score_text = str(score) if score > 0 else 'N/A'
+                
+                system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
+                
+                # Nuevo orden: fecha, nombre, IP, tipo, media, bucket, tamaño, score, systemid
+                self.results_tree.insert("", "end", values=(
+                    date_text, name_display, ip_address, type_text, media_text, 
+                    bucket_text, size_text, score_text, system_id
+                ))
+    
+    def refresh_credits(self):
+        """Actualizar créditos usando la API real"""
+        if not self.api_key:
+            return
+            
         try:
-            self.context_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.context_menu.grab_release()
-
+            logger.info("Actualizando créditos desde la API...")
+            success, credits_or_error = get_api_credits(self.api_key)
+            
+            if success:
+                old_credits = getattr(self, 'credits', 0)
+                self.credits = credits_or_error
+                lang = self.languages.get(self.current_language, self.languages["es"])
+                self.credits_label.configure(text=f"{lang['Créditos']} {self.credits}")
+                
+                if old_credits != self.credits:
+                    logger.info(f"Créditos actualizados: {old_credits} → {self.credits}")
+                else:
+                    logger.info(f"Créditos confirmados: {self.credits}")
+            else:
+                logger.error(f"Error obteniendo créditos: {credits_or_error}")
+                lang = self.languages.get(self.current_language, self.languages["es"])
+                self.credits_label.configure(text=f"{lang['Créditos']} Error")
+                
+        except Exception as e:
+            logger.exception("Error obteniendo créditos")
+            lang = self.languages.get(self.current_language, self.languages["es"])
+            self.credits_label.configure(text=f"{lang['Créditos']} Error")
+    
     def manage_api_key(self):
         """Gestionar clave API"""
         dialog = ui_components.ApiKeyDialog(self, self.api_key)
@@ -844,60 +809,70 @@ class IntelXCheckerApp(ctk.CTk):
         if new_key is not None:
             self.api_key = new_key
             try:
-                # Guardar la clave y reinstanciar el cliente
                 set_key(self.config_file, 'INTELX_API_KEY', self.api_key)
                 if self.api_key:
-                    self.api_client = IntelXAPI(self.api_key)
                     self.refresh_credits()
-                else:
-                    self.api_client = None
             except Exception as e:
                 logger.exception("Error guardando API key")
-                self.api_client = None
-
+    
     def open_intelx_api_page(self):
         """Abrir página de API de IntelX"""
         webbrowser.open("https://intelx.io/account?tab=developer")
-
+    
     def show_about(self):
         """Mostrar información sobre la aplicación"""
         ui_components.AboutDialog(self, self.app_version, self.current_language)
-
+    
+    # Event handlers
+    def on_item_double_click(self, event):
+        """Manejar doble clic en item"""
+        self.preview_selected()
+    
+    def show_context_menu(self, event):
+        """Mostrar menú contextual"""
+        try:
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+    
     def preview_selected(self):
         """Preview del item seleccionado"""
         selection = self.results_tree.selection()
         if not selection:
             return
             
+        # Obtener datos del item seleccionado
         item = self.results_tree.item(selection[0])
         values = item['values']
         
         if values:
             record_id = values[-1]  # El systemid está en la última columna
+            # Buscar record completo usando la función auxiliar
             record = self._find_record_by_id(record_id)
             
             if record:
+                # Crear ventana de preview (implementar según necesidades)
                 self._show_preview_window(record)
-
+    
     def _show_preview_window(self, record):
         """Mostrar ventana de preview"""
-        preview_window = ui_components.PreviewWindow(self, record, self.api_client)
-        self.preview_windows[record.get('systemid', '')] = preview_window
-
+        preview_window = ui_components.PreviewWindow(self, record)
+        self.preview_windows[record.get('storageid', '')] = preview_window
+    
     def _on_preview_close(self, storage_id):
         """Callback cuando se cierra preview"""
         if storage_id in self.preview_windows:
             del self.preview_windows[storage_id]
-
+    
     def select_all(self):
         """Seleccionar todos los items"""
         for item in self.results_tree.get_children():
             self.results_tree.selection_add(item)
-
+    
     def deselect_all(self):
         """Deseleccionar todos los items"""
         self.results_tree.selection_remove(self.results_tree.selection())
-
+    
     def copy_selected(self):
         """Copiar selección al clipboard"""
         selection = self.results_tree.selection()
@@ -911,7 +886,7 @@ class IntelXCheckerApp(ctk.CTk):
         
         self.clipboard_clear()
         self.clipboard_append('\n'.join(copied_data))
-
+    
     def export_selection(self):
         """Exportar selección"""
         selection = self.results_tree.selection()
@@ -919,6 +894,7 @@ class IntelXCheckerApp(ctk.CTk):
             messagebox.showwarning("Error", "No hay elementos seleccionados")
             return
         
+        # Obtener records seleccionados
         selected_records = []
         for item_id in selection:
             item = self.results_tree.item(item_id)
@@ -930,168 +906,126 @@ class IntelXCheckerApp(ctk.CTk):
                     selected_records.append(record)
         
         if selected_records:
+            # Usar dialogo de exportación
             ui_components.show_export_selection_dialog(self, selected_records)
 
-    def cancel_search(self):
-        """Cancelar búsqueda en curso"""
-        if self.search_thread and self.search_thread.is_alive():
-            self.stop_search = True
-            if self.cancel_event:
-                self.cancel_event.set()
-            self.status_label.configure(text="Cancelando búsqueda...")
-            self.cancel_button.configure(state="disabled")
-
-    def filter_results(self, event=None):
-        """Filtrar resultados según el texto de búsqueda"""
-        filter_text = self.filter_entry.get().strip().lower()
-        
-        if not filter_text:
-            # Si no hay filtro, mostrar todos los registros
-            self.current_records = list(self.all_records)
-        else:
-            # Filtrar registros que contengan el texto en cualquier campo
-            filtered = []
-            for record in self.all_records:
-                if isinstance(record, dict):
-                    # Buscar en todos los campos del registro
-                    record_text = ' '.join(str(v) for v in record.values() if v).lower()
-                    if filter_text in record_text:
-                        filtered.append(record)
-                elif isinstance(record, str):
-                    if filter_text in record.lower():
-                        filtered.append(record)
-            self.current_records = filtered
-        
-        # Actualizar treeview con resultados filtrados
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
-        self._populate_results(self.current_records)
-        
-        # Actualizar status
-        self.status_label.configure(text=f"Mostrando {len(self.current_records)} de {len(self.all_records)} resultados")
-
-    def refresh_credits(self):
-        """Refrescar créditos disponibles"""
-        if not self.api_client:
-            self.credits_label.configure(text="Créditos: N/A")
-            return
-        
+    # --- Export methods (using modular architecture) ---
+    def export_to_csv_safe(self):
+        """Exportar a CSV usando módulo de exportación"""
         try:
-            success, credits_or_error = self.api_client.get_credits()
-            if success:
-                self.credits = credits_or_error
-                lang = self.languages.get(self.current_language, self.languages["es"])
-                self.credits_label.configure(text=f"{lang['Créditos']} {self.credits}")
-            else:
-                self.credits_label.configure(text="Créditos: Error")
-        except Exception as e:
-            logger.exception("Error refrescando créditos")
-            self.credits_label.configure(text="Créditos: Error")
-
-    # --- Async credits refresh para no bloquear la UI ---
-    def refresh_credits_async(self):
-        def _worker():
-            if not self.api_client:
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
                 return
-            try:
-                success, credits_or_error = self.api_client.get_credits()
-                if success:
-                    self.credits = credits_or_error
-                    lang = self.languages.get(self.current_language, self.languages["es"])
-                    self.after(0, lambda: self.credits_label.configure(text=f"{lang['Créditos']} {self.credits}"))
-                else:
-                    self.after(0, lambda: self.credits_label.configure(text="Créditos: Error"))
-            except Exception:
-                logger.exception("Error refrescando créditos (async)")
-                self.after(0, lambda: self.credits_label.configure(text="Créditos: Error"))
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def export_to_csv(self):
-        """Exportar resultados a CSV"""
-        if not self.current_records:
-            messagebox.showwarning("Error", "No hay resultados para exportar")
-            return
-        
-        try:
-            search_term = self.term_entry.get().strip()
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            reports_dir = os.path.join(os.path.dirname(__file__), '..', 'reports', 'csv')
-            os.makedirs(reports_dir, exist_ok=True)
-            sanitized_term = sanitize_filename(search_term or 'IntelX_Report')
-            filename = f"{sanitized_term}_{timestamp}.csv"
-            output_filepath = os.path.join(reports_dir, filename)
             
-            exports_module.export_to_csv(self.current_records, output_filepath)
-            messagebox.showinfo("Éxito", "Resultados exportados a CSV correctamente")
+            # Get selection if any  
+            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
             
-            # Preguntar si quiere abrir el archivo
-            if messagebox.askyesno("Abrir archivo", "¿Desea abrir el archivo CSV exportado?"):
-                try:
-                    os.startfile(output_filepath)
-                except Exception as e:
-                    logger.error(f"Error al abrir archivo CSV: {e}")
-                    messagebox.showerror("Error", f"No se pudo abrir el archivo CSV: {str(e)}")
-                    
+            # Ask user what to export if there are selections
+            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
+            if not records_to_export:
+                return
+                
+            # Get search term for filename
+            search_term = self.term_entry.get().strip() or 'IntelX_Export'
+                
+            filepath = exports_module.export_to_csv(records_to_export, search_term)
+            ui_components.show_export_success_dialog(self, filepath)
+            return filepath
         except Exception as e:
-            logger.exception("Error exportando a CSV")
-            messagebox.showerror("Error", f"Error al exportar a CSV: {str(e)}")
+            logger.exception('Error exporting CSV')
+            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando CSV: {e}', 'error')
 
-    def export_to_json(self):
-        """Exportar resultados a JSON"""
-        if not self.current_records:
-            messagebox.showwarning("Error", "No hay resultados para exportar")
-            return
-        
+    def export_to_json_safe(self):
+        """Exportar a JSON usando módulo de exportación"""
         try:
-            search_term = self.term_entry.get().strip()
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            reports_dir = os.path.join(os.path.dirname(__file__), '..', 'reports', 'json')
-            os.makedirs(reports_dir, exist_ok=True)
-            sanitized_term = sanitize_filename(search_term or 'IntelX_Report')
-            filename = f"{sanitized_term}_{timestamp}.json"
-            output_filepath = os.path.join(reports_dir, filename)
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                return
             
-            exports_module.export_to_json(self.current_records, output_filepath)
-            messagebox.showinfo("Éxito", "Resultados exportados a JSON correctamente")
+            # Get selection if any  
+            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
             
-            # Preguntar si quiere abrir el archivo
-            if messagebox.askyesno("Abrir archivo", "¿Desea abrir el archivo JSON exportado?"):
-                try:
-                    os.startfile(output_filepath)
-                except Exception as e:
-                    logger.error(f"Error al abrir archivo JSON: {e}")
-                    messagebox.showerror("Error", f"No se pudo abrir el archivo JSON: {str(e)}")
-                    
+            # Ask user what to export if there are selections
+            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
+            if not records_to_export:
+                return
+                
+            # Get search term for filename
+            search_term = self.term_entry.get().strip() or 'IntelX_Export'
+                
+            filepath = exports_module.export_to_json(records_to_export, search_term)
+            ui_components.show_export_success_dialog(self, filepath)
+            return filepath
         except Exception as e:
-            logger.exception("Error exportando a JSON")
-            messagebox.showerror("Error", f"Error al exportar a JSON: {str(e)}")
+            logger.exception('Error exporting JSON')
+            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando JSON: {e}', 'error')
 
-    def export_to_html(self):
-        """Exportar resultados a HTML"""
-        if not self.current_records:
-            messagebox.showwarning("Error", "No hay resultados para exportar")
-            return
-        
+    def export_to_html_safe(self):
+        """Generate a Mandiant-style HTML report using modular architecture"""
         try:
-            search_term = self.term_entry.get().strip()
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            reports_dir = os.path.join(os.path.dirname(__file__), '..', 'reports', 'html')
-            os.makedirs(reports_dir, exist_ok=True)
-            sanitized_term = sanitize_filename(search_term or 'IntelX_Report')
-            filename = f"{sanitized_term}_{timestamp}.html"
-            output_filepath = os.path.join(reports_dir, filename)
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                return
+
+            search_term = self.term_entry.get().strip() or "búsqueda_sin_nombre"
+            timestamp = datetime.utcnow()
+
+            # Create export path
+            exports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "exports", "html")
+            os.makedirs(exports_dir, exist_ok=True)
+
+            safe_search = sanitize_filename(search_term)
+            filename = f"IntelX_Report_{safe_search}_{timestamp.strftime('%Y%m%d_%H%M%S')}.html"
+            filepath = os.path.join(exports_dir, filename)
+
+            # Prepare analysis using modular functions
+            analysis = analyze_results_for_report(self.current_records)
+            html_content = generate_modern_html_content(search_term, analysis, timestamp, self.current_records)
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            # Show success dialog
+            ui_components.show_export_success_dialog(self, filepath)
             
-            exports_module.export_to_html(self.current_records, output_filepath, search_term=search_term, app_version=self.app_version)
-            messagebox.showinfo("Éxito", "Resultados exportados a HTML correctamente")
-            
-            # Preguntar si quiere abrir el archivo
-            if messagebox.askyesno("Abrir archivo", "¿Desea abrir el reporte HTML exportado en el navegador?"):
-                try:
-                    webbrowser.open(f'file://{output_filepath}')
-                except Exception as e:
-                    logger.error(f"Error al abrir archivo HTML: {e}")
-                    messagebox.showerror("Error", f"No se pudo abrir el reporte HTML: {str(e)}")
-                    
+            # Ask if user wants to open
+            if messagebox.askyesno("Reporte HTML", "¿Desea abrir el reporte en su navegador?"):
+                open_in_browser(filepath)
+
+            logger.info(f"Reporte HTML generado: {filepath}")
+            return filepath
+
         except Exception as e:
-            logger.exception("Error exportando a HTML")
-            messagebox.showerror("Error", f"Error al exportar a HTML: {str(e)}")
+            logger.exception("Error generando reporte HTML")
+            ui_components.show_custom_messagebox(self, "Error", f"Error generando reporte: {e}", "error")
+
+    def export_to_pdf_safe(self):
+        """Exportar a PDF usando módulo de exportación"""
+        try:
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                return
+            
+            # Get selection if any  
+            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
+                
+            # Ask user what to export if there are selections
+            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
+            if not records_to_export:
+                return
+                
+            # Get search term for title
+            search_term = self.term_entry.get().strip() or 'IntelX Report'
+                
+            filepath = exports_module.generate_pdf_report(records_to_export, title=search_term)
+            ui_components.show_export_success_dialog(self, filepath)
+            return filepath
+        except Exception as e:
+            logger.exception('Error exporting PDF')
+            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando PDF: {e}', 'error')
+
+
+# Provide compatibility for scripts that import the class directly
+if __name__ == '__main__':
+    app = IntelXCheckerApp()
+    app.mainloop()

@@ -33,265 +33,338 @@ REQUEST_TIMEOUT_TERMINATE: int = 10
 REQUEST_TIMEOUT_PREVIEW: int = 20
 
 # Otros
-USER_AGENT: str = "Python-CustomTkinter-IntelX-Checker-App/2.0.0"
+USER_AGENT: str = "Python-CustomTkinter-IntelX-Checker-App/1.3.2"
 DEFAULT_DATE_MIN: datetime = datetime(MINYEAR, 1, 1, tzinfo=timezone.utc)
 DEFAULT_DATE_MAX: datetime = datetime(MAXYEAR, 12, 31, tzinfo=timezone.utc)
 
 # --- Mapeo completo de Media Type según documentación oficial de IntelX SDK ---
 MEDIA_TYPE_MAP: Dict[int, str] = {
-    0: "All/Not Set", 1: "Paste Document", 2: "Paste User", 3: "Forum",
-    4: "Forum Board", 5: "Forum Thread", 6: "Forum Post", 7: "Forum User",
-    8: "Screenshot of Website", 9: "HTML copy of Website", 10: "Text copy of Website",
-    11: "Invalid/Do Not Use", 12: "Invalid/Do Not Use", 13: "Tweet",
-    14: "URL (High-Level Item)", 15: "PDF Document", 16: "Word Document",
-    17: "Excel Document", 18: "PowerPoint Document", 19: "Picture",
-    20: "Audio File", 21: "Video File", 22: "Container File (ZIP/RAR/TAR)",
-    23: "HTML File", 24: "Text File", 25: "Ebook", 26: "Unknown Media Type",
-    27: "Source Code", 28: "Unknown Media Type", 29: "Unknown Media Type",
-    30: "Unknown Media Type", 31: "Unknown Media Type", 32: "Source Code",
+    0: "All/Not Set",
+    1: "Paste Document", 
+    2: "Paste User",
+    3: "Forum",
+    4: "Forum Board",
+    5: "Forum Thread",
+    6: "Forum Post",
+    7: "Forum User",
+    8: "Screenshot of Website",
+    9: "HTML copy of Website",
+    10: "Text copy of Website",  # Mencionado en PHP SDK pero marcado como inválido en Python
+    11: "Invalid/Do Not Use",
+    12: "Invalid/Do Not Use", 
+    13: "Tweet",
+    14: "URL (High-Level Item)",
+    15: "PDF Document",
+    16: "Word Document",
+    17: "Excel Document", 
+    18: "PowerPoint Document",
+    19: "Picture",
+    20: "Audio File",
+    21: "Video File",
+    22: "Container File (ZIP/RAR/TAR)",
+    23: "HTML File",
+    24: "Text File",
+    25: "Ebook",  # Encontrado en FILE_VIEW función
+    26: "Unknown Media Type",
+    27: "Source Code",
+    28: "Unknown Media Type",
+    29: "Unknown Media Type", 
+    30: "Unknown Media Type",
+    31: "Unknown Media Type",
+    32: "Source Code",  # Encontrado en mapeo actual
 }
 
-class IntelXAPI:
+# --- Funciones de Lógica API ---
+def check_intelx(
+    search_term: str,
+    api_key: str,
+    selected_buckets: Optional[List[str]] = None,
+    cancel_event: Optional[threading.Event] = None
+) -> Tuple[bool, Union[str, Dict[str, Any]], Optional[str]]:
     """
-    Wrapper para la API de Intelligence X que maneja la autenticación,
-    búsquedas y recuperación de resultados de forma centralizada.
+    Inicia una búsqueda en IntelX y recupera los resultados.
+
+    Returns:
+        Tuple[bool, Union[str, Dict], Optional[str]]: (success, data_or_error_message, search_id)
     """
-    def __init__(self, api_key: str):
-        if not api_key:
-            raise ValueError("La clave API de IntelX no puede estar vacía.")
-        self.api_key = api_key
-        self.session = requests.Session()
-        self.session.headers.update({
-            'x-key': self.api_key,
-            'User-Agent': USER_AGENT
-        })
+    if not search_term:
+        return False, "Introduce un término de búsqueda válido.", None
+    if not api_key:
+        return False, "La clave API de IntelX no ha sido proporcionada.", None
 
-    def search(
-        self,
-        search_term: str,
-        selected_buckets: Optional[List[str]] = None,
-        cancel_event: Optional[threading.Event] = None
-    ) -> Tuple[bool, Union[str, Dict[str, Any]], Optional[str]]:
-        """
-        Inicia una búsqueda en IntelX y recupera los resultados.
-        """
-        if not search_term:
-            return False, "Introduce un término de búsqueda válido.", None
+    cancel_event = cancel_event or threading.Event()
+    if cancel_event.is_set():
+        logging.info("Cancelado antes de enviar la solicitud de búsqueda.")
+        return False, "Búsqueda cancelada antes de iniciar.", None
 
-        cancel_event = cancel_event or threading.Event()
-        if cancel_event.is_set():
-            logging.info("Cancelado antes de enviar la solicitud de búsqueda.")
-            return False, "Búsqueda cancelada antes de iniciar.", None
+    selected_buckets = selected_buckets if selected_buckets is not None else []
+    headers = {'x-key': api_key, 'User-Agent': USER_AGENT}
+    post_data = {
+        "term": search_term,
+        "buckets": selected_buckets,
+        "lookuplevel": 0,
+        "maxresults": MAX_RESULTS_TO_FETCH,
+        "timeout": 25,
+        "datefrom": "",
+        "dateto": "",
+        "sort": 2,
+        "media": 0,
+        "terminate": [],
+    }
 
-        post_data = {
-            "term": search_term,
-            "buckets": selected_buckets or [],
-            "lookuplevel": 0, "maxresults": MAX_RESULTS_TO_FETCH, "timeout": 25,
-            "datefrom": "", "dateto": "", "sort": 2, "media": 0, "terminate": [],
-        }
+    logging.info(f"Iniciando búsqueda IntelX para '{search_term}' en buckets: {selected_buckets or 'Todos'}")
+    response: Optional[requests.Response] = None
+    search_id: Optional[str] = None
 
-        logging.info(f"Iniciando búsqueda IntelX para '{search_term}' en buckets: {selected_buckets or 'Todos'}")
-        response: Optional[requests.Response] = None
-        search_id: Optional[str] = None
+    try:
+        response = requests.post(
+            INTELX_API_URL_SEARCH,
+            headers=headers,
+            json=post_data,
+            timeout=REQUEST_TIMEOUT_SEARCH
+        )
+        response.raise_for_status()
 
-        try:
-            response = self.session.post(
-                INTELX_API_URL_SEARCH,
-                json=post_data,
-                timeout=REQUEST_TIMEOUT_SEARCH
-            )
-            response.raise_for_status()
-            search_result = response.json()
-            search_id = search_result.get('id')
-            initial_status = search_result.get('status', -1)
+        search_result = response.json()
+        search_id = search_result.get('id')
+        initial_status = search_result.get('status', -1)
 
-            if not search_id:
-                logging.error("La API de IntelX no devolvió un ID de búsqueda.")
-                return False, "Error: IntelX no devolvió un ID de búsqueda.", None
-
-            logging.info(f"Búsqueda iniciada con ID: {search_id}, Status Inicial: {initial_status}")
-
-            if cancel_event.is_set():
-                logging.info(f"Búsqueda {search_id} cancelada inmediatamente después de iniciar.")
-                self.terminate_search(search_id)
-                return False, "Búsqueda cancelada.", search_id
-
-            return self._retrieve_results(search_id, initial_status, cancel_event)
-
-        except requests.exceptions.HTTPError as err:
-            return self._handle_http_error(err, search_id)
-        except requests.exceptions.Timeout:
-            logging.error(f"Timeout ({REQUEST_TIMEOUT_SEARCH}s) al iniciar la búsqueda.")
-            return False, f"Error: Timeout ({REQUEST_TIMEOUT_SEARCH}s) al conectar con IntelX.", None
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error de conexión/red al iniciar búsqueda: {e}", exc_info=True)
-            return False, f"Error de conexión de red: {e}", None
-        except json.JSONDecodeError:
-            resp_text = response.text if response else "N/A"
-            logging.error(f"Error al decodificar JSON de la respuesta inicial. Respuesta: {resp_text[:200]}...")
-            return False, "Error al procesar la respuesta inicial de IntelX.", None
-        except Exception as e:
-            logging.exception(f"Error inesperado al iniciar búsqueda para '{search_term}': {e}")
-            return False, f"Error inesperado: {e}", search_id
-
-    def _retrieve_results(
-        self,
-        search_id: str,
-        initial_status: int,
-        cancel_event: threading.Event
-    ) -> Tuple[bool, Union[str, Dict[str, Any]], Optional[str]]:
-        """
-        Espera y recupera los resultados de una búsqueda, manejando estados y cancelación.
-        """
-        start_time = time.time()
-        current_status = initial_status
-
-        logging.info(f"Procesando ID: {search_id} (estado inicial: {current_status})")
-
-        while True:
-            if cancel_event.is_set():
-                logging.info(f"ID {search_id}: Proceso de recuperación cancelado.")
-                self.terminate_search(search_id)
-                return False, "Búsqueda cancelada.", search_id
-
-            if current_status == 0: # Completado con resultados
-                return self._fetch_final_results(search_id)
-
-            elif current_status == 1: # Completado sin resultados
-                logging.info(f"ID {search_id}: Estado 1 (Completado sin resultados).")
-                return True, {"records": []}, search_id
-
-            elif current_status in [2, 3]: # En progreso
-                if time.time() - start_time > MAX_WAIT_TIME_RESULTS:
-                    logging.warning(f"ID {search_id}: Timeout global ({MAX_WAIT_TIME_RESULTS}s) esperando.")
-                    self.terminate_search(search_id)
-                    return False, "Error: Timeout esperando que la búsqueda finalice.", search_id
-
-                if cancel_event.wait(timeout=WAIT_INTERVAL_RESULTS):
-                    continue # Si el evento se activa, el bucle principal lo capturará
-
-                success, new_status = self._check_search_status(search_id)
-                if success:
-                    if new_status != current_status:
-                        logging.info(f"ID {search_id}: Estado actualizado de {current_status} a {new_status}.")
-                        current_status = new_status
-                else:
-                    # Si falla la comprobación de estado, se sigue intentando hasta el timeout
-                    logging.warning(f"No se pudo obtener el estado para {search_id}. Reintentando...")
-
-            else: # Estado inesperado o fallido
-                logging.error(f"ID {search_id}: Estado inesperado o fallido encontrado: {current_status}")
-                return False, f"Error: Estado de búsqueda inesperado o fallido ({current_status}).", search_id
-
-    def _fetch_final_results(self, search_id: str) -> Tuple[bool, Union[str, Dict], Optional[str]]:
-        """Obtiene los resultados finales de una búsqueda completada."""
-        logging.info(f"ID {search_id}: Estado 0 (Completado). Obteniendo resultados...")
-        results_url = f"{INTELX_API_URL_RESULT}?id={search_id}&limit={MAX_RESULTS_TO_FETCH}&previewlines=1"
-        try:
-            response = self.session.get(results_url, timeout=REQUEST_TIMEOUT_RESULTS)
-            response.raise_for_status()
-            results_data = response.json()
-            logging.info(f"ID {search_id}: Resultados obtenidos ({len(results_data.get('records', []))} registros).")
-            return True, results_data, search_id
-        except requests.exceptions.HTTPError as err:
-            return self._handle_http_error(err, search_id)
-        except (requests.exceptions.Timeout, requests.exceptions.RequestException, json.JSONDecodeError) as e:
-            logging.error(f"Error obteniendo resultados para {search_id}: {e}", exc_info=True)
-            return False, f"Error al obtener resultados finales: {e}", search_id
-
-    def _check_search_status(self, search_id: str) -> Tuple[bool, int]:
-        """Consulta el estado actual de una búsqueda."""
-        status_url = f"{INTELX_API_URL_STATUS}?id={search_id}"
-        try:
-            response = self.session.get(status_url, timeout=REQUEST_TIMEOUT_STATUS)
-            response.raise_for_status()
-            status_data = response.json()
-            if 'status' not in status_data:
-                logging.error(f"Respuesta de estado para {search_id} inválida: {status_data}")
-                return False, -1
-            return True, status_data['status']
-        except (requests.exceptions.RequestException, json.JSONDecodeError):
-            return False, -1
-
-    def get_credits(self) -> Tuple[bool, Union[int, str]]:
-        """Obtiene los créditos restantes de la API."""
-        try:
-            response = self.session.get(INTELX_API_URL_AUTH_INFO, timeout=REQUEST_TIMEOUT_AUTH)
-            response.raise_for_status()
-            auth_info = response.json()
-            
-            credits = 0
-            if 'paths' in auth_info and '/intelligent/search' in auth_info['paths']:
-                credits = auth_info['paths']['/intelligent/search'].get('Credit', 0)
-            
-            if credits == 0: # Fallback a otros campos
-                credits = auth_info.get('credits', auth_info.get('dailySearchCredits', auth_info.get('searchCredits', 0)))
-
-            logging.info(f"Créditos de búsqueda disponibles: {credits}")
-            return True, credits
-            
-        except requests.exceptions.HTTPError as err:
-            success, msg, _ = self._handle_http_error(err)
-            return success, msg
-        except (requests.exceptions.Timeout, requests.exceptions.RequestException, json.JSONDecodeError) as e:
-            logging.error(f"Error obteniendo créditos: {e}", exc_info=True)
-            return False, f"Error al obtener créditos: {e}"
-        except Exception as e:
-            logging.exception(f"Error inesperado obteniendo créditos: {e}")
-            return False, f"Error inesperado: {e}"
-
-    def terminate_search(self, search_id: str) -> bool:
-        """Termina una búsqueda en curso en IntelX."""
         if not search_id:
-            return False
-        terminate_url = f"{INTELX_API_URL_TERMINATE}?id={search_id}"
-        try:
-            response = self.session.get(terminate_url, timeout=REQUEST_TIMEOUT_TERMINATE)
-            response.raise_for_status()
-            logging.info(f"Solicitud de terminación enviada para la búsqueda {search_id}.")
-            return True
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error al intentar terminar la búsqueda {search_id}: {e}")
-            return False
+            logging.error("La API de IntelX no devolvió un ID de búsqueda en la respuesta.")
+            return False, "Error: IntelX no devolvió un ID de búsqueda.", None
 
-    def get_file_preview(self, system_id: str, file_type: int = 0, escape: bool = False) -> Tuple[bool, str]:
-        """
-        Obtiene la vista previa de un fichero.
-        """
-        params = {
-            "sid": system_id,
-            "f": file_type,
-            "es": 1 if escape else 0,
-            "l": 200 # Limitar a 200 líneas por defecto
-        }
-        try:
-            response = self.session.get(INTELX_API_URL_FILE_PREVIEW, params=params, timeout=REQUEST_TIMEOUT_PREVIEW)
-            response.raise_for_status()
-            return True, response.text
-        except requests.exceptions.HTTPError as err:
-            success, msg, _ = self._handle_http_error(err)
-            return success, msg
-        except (requests.exceptions.Timeout, requests.exceptions.RequestException) as e:
-            logging.error(f"Error obteniendo preview para {system_id}: {e}", exc_info=True)
-            return False, f"Error de red o timeout: {e}"
+        logging.info(f"Búsqueda iniciada con éxito. ID: {search_id}, Status Inicial: {initial_status}")
 
-    def _handle_http_error(self, err: requests.exceptions.HTTPError, search_id: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
-        """Manejador centralizado para errores HTTP."""
+        if cancel_event.is_set():
+            logging.info(f"Búsqueda {search_id} cancelada inmediatamente después de iniciar.")
+            return False, "Búsqueda cancelada.", search_id
+
+        success_retrieve, data_retrieve = retrieve_intelx_results(
+            search_id, initial_status, headers, cancel_event
+        )
+        return success_retrieve, data_retrieve, search_id
+
+    except requests.exceptions.HTTPError as err:
+        status_code = err.response.status_code
+        try:
+            error_detail = err.response.json().get('error', err.response.text)
+        except json.JSONDecodeError:
+            error_detail = err.response.text
+        logging.error(f"Error HTTP {status_code} al iniciar búsqueda: {error_detail}")
+        error_message = f"Error IntelX {status_code}"
+        if status_code == 401:
+            error_message += ": Clave API inválida o sin permisos."
+        elif status_code == 402:
+            error_message += ": Créditos insuficientes."
+        else:
+            error_message += f": {error_detail[:100]}"
+        return False, error_message, search_id
+    except requests.exceptions.Timeout:
+        logging.error(f"Timeout ({REQUEST_TIMEOUT_SEARCH}s) al iniciar la búsqueda.")
+        return False, f"Error: Timeout ({REQUEST_TIMEOUT_SEARCH}s) al conectar con IntelX.", None
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error de conexión/red al iniciar búsqueda: {e}", exc_info=True)
+        return False, f"Error de conexión de red: {e}", None
+    except json.JSONDecodeError:
+        resp_text = response.text if response else "N/A"
+        logging.error(f"Error al decodificar JSON de la respuesta inicial. Respuesta: {resp_text[:200]}...")
+        return False, "Error al procesar la respuesta inicial de IntelX.", None
+    except Exception as e:
+        logging.exception(f"Error inesperado al iniciar búsqueda para '{search_term}': {e}")
+        return False, f"Error inesperado: {e}", search_id
+
+def retrieve_intelx_results(
+    search_id: str,
+    initial_status: int,
+    headers: Dict[str, str],
+    cancel_event: threading.Event
+) -> Tuple[bool, Union[str, Dict[str, Any]]]:
+    """
+    Espera y recupera los resultados de una búsqueda IntelX, manejando estados y cancelación.
+
+    Returns:
+        Tuple[bool, Union[str, Dict]]: (success, data_or_error_message)
+    """
+    results_url = f"{INTELX_API_URL_RESULT}?id={search_id}&limit={MAX_RESULTS_TO_FETCH}&previewlines=1"
+    status_url = f"{INTELX_API_URL_STATUS}?id={search_id}"
+    start_time = time.time()
+    current_status = initial_status
+
+    logging.info(f"Procesando ID: {search_id} (estado inicial: {current_status})")
+
+    while True:
+        if cancel_event.is_set():
+            logging.info(f"ID {search_id}: Proceso de recuperación cancelado.")
+            return False, "Búsqueda cancelada."
+
+        if current_status == 0:
+            logging.info(f"ID {search_id}: Estado 0 (Completado). Obteniendo resultados...")
+            results_response: Optional[requests.Response] = None
+            try:
+                if cancel_event.is_set(): continue
+
+                results_response = requests.get(results_url, headers=headers, timeout=REQUEST_TIMEOUT_RESULTS)
+                results_response.raise_for_status()
+                results_data = results_response.json()
+                logging.info(f"ID {search_id}: Resultados obtenidos correctamente ({len(results_data.get('records', []))} registros).")
+                return True, results_data
+
+            except requests.exceptions.HTTPError as err:
+                status_code = err.response.status_code
+                resp_text = err.response.text
+                logging.error(f"Error HTTP {status_code} obteniendo resultados para {search_id}: {resp_text}")
+                msg = f"Error {status_code} obteniendo resultados"
+                if status_code == 404: msg += " (Búsqueda no encontrada o expirada)."
+                elif status_code == 401: msg += " (Clave API inválida)."
+                elif status_code == 402: msg += " (Créditos insuficientes)."
+                else: msg += "."
+                return False, msg
+            except requests.exceptions.Timeout:
+                logging.error(f"Timeout ({REQUEST_TIMEOUT_RESULTS}s) obteniendo resultados para {search_id}.")
+                return False, f"Error: Timeout ({REQUEST_TIMEOUT_RESULTS}s) obteniendo resultados."
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Error de red obteniendo resultados para {search_id}: {e}", exc_info=True)
+                return False, f"Error de red obteniendo resultados: {e}"
+            except json.JSONDecodeError:
+                resp_text = results_response.text if results_response else "N/A"
+                logging.error(f"Error decodificando JSON de resultados para {search_id}. Respuesta: {resp_text[:200]}...")
+                return False, "Error procesando la respuesta de resultados de IntelX."
+            except Exception as e:
+                logging.exception(f"Error inesperado obteniendo resultados {search_id}: {e}")
+                return False, f"Error inesperado: {e}"
+
+        elif current_status == 1:
+            logging.info(f"ID {search_id}: Estado 1 (Completado sin resultados).")
+            return True, {"records": []}
+
+        elif current_status in [2, 3]:
+            status_desc = "En progreso" if current_status == 2 else "Esperando resultados"
+            logging.info(f"ID {search_id}: Estado {current_status} ({status_desc}). Esperando...")
+
+            elapsed_time = time.time() - start_time
+            if elapsed_time > MAX_WAIT_TIME_RESULTS:
+                logging.warning(f"ID {search_id}: Timeout global ({MAX_WAIT_TIME_RESULTS}s) esperando en estado {current_status}.")
+                return False, f"Error: Timeout esperando que la búsqueda finalice (Estado {current_status})."
+
+            logging.debug(f"ID {search_id}: Esperando {WAIT_INTERVAL_RESULTS}s antes de consultar estado...")
+            if cancel_event.wait(timeout=WAIT_INTERVAL_RESULTS):
+                logging.info(f"ID {search_id}: Cancelado durante la espera.")
+                continue
+
+            if cancel_event.is_set(): continue
+
+            logging.debug(f"ID {search_id}: Consultando estado actual en {status_url}")
+            status_response: Optional[requests.Response] = None
+            try:
+                status_response = requests.get(status_url, headers=headers, timeout=REQUEST_TIMEOUT_STATUS)
+                status_response.raise_for_status()
+                status_data = status_response.json()
+
+                if 'status' not in status_data:
+                    logging.error(f"Respuesta de estado para {search_id} inválida (sin clave 'status'): {status_data}")
+                    return False, "Error: Respuesta de estado de IntelX inválida."
+
+                new_status = status_data['status']
+                if new_status != current_status:
+                    logging.info(f"ID {search_id}: Estado actualizado de {current_status} a {new_status}.")
+                    current_status = new_status
+                else:
+                    logging.debug(f"ID {search_id}: Estado sigue siendo {current_status}.")
+
+            except requests.exceptions.HTTPError as err:
+                status_code = err.response.status_code
+                resp_text = err.response.text
+                logging.error(f"Error HTTP {status_code} verificando estado {search_id}: {resp_text}")
+                msg = f"Error {status_code} verificando estado"
+                if status_code == 404: msg += " (ID de búsqueda no encontrado)."
+                elif status_code == 401: msg += " (Clave API inválida)."
+                else: msg += "."
+                return False, msg
+            except requests.exceptions.Timeout:
+                logging.warning(f"Timeout ({REQUEST_TIMEOUT_STATUS}s) verificando estado {search_id}. Se continuará esperando...")
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"Error de red verificando estado {search_id}: {e}. Se continuará esperando...")
+            except json.JSONDecodeError:
+                resp_text = status_response.text if status_response else "N/A"
+                logging.error(f"Error decodificando JSON de estado para {search_id}. Respuesta: {resp_text[:200]}...")
+                return False, "Error procesando la respuesta de estado de IntelX."
+            except Exception as e:
+                logging.exception(f"Error inesperado verificando estado {search_id}: {e}")
+                return False, f"Error inesperado: {e}"
+
+        else:
+            logging.error(f"ID {search_id}: Estado inesperado o fallido encontrado: {current_status}")
+            return False, f"Error: Estado de búsqueda inesperado o fallido ({current_status})."
+
+def get_api_credits(api_key: str) -> Tuple[bool, Union[int, str]]:
+    """
+    Obtiene los créditos restantes de la API de IntelX usando el endpoint /authenticate/info.
+    Basado en el SDK oficial de IntelX que usa GET_CAPABILITIES().
+    
+    Returns:
+        Tuple[bool, Union[int, str]]: (success, credits_or_error_message)
+    """
+    if not api_key:
+        return False, "Clave API no proporcionada"
+    
+    headers = {'x-key': api_key, 'User-Agent': USER_AGENT}
+    
+    try:
+        response = requests.get(
+            INTELX_API_URL_AUTH_INFO,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT_AUTH
+        )
+        response.raise_for_status()
+        
+        auth_info = response.json()
+        
+        # Extraer créditos del endpoint de búsqueda según la estructura real de la API
+        credits = 0
+        if 'paths' in auth_info and '/intelligent/search' in auth_info['paths']:
+            search_info = auth_info['paths']['/intelligent/search']
+            credits = search_info.get('Credit', 0)
+            
+        # Si no se encuentran créditos en paths, intentar campos directos
+        if credits == 0:
+            credits = auth_info.get('credits', 0)
+            if credits == 0:
+                credits = auth_info.get('dailySearchCredits', 0)
+            if credits == 0:
+                credits = auth_info.get('searchCredits', 0)
+        
+        logging.info(f"Créditos de búsqueda disponibles: {credits}")
+        return True, credits
+        
+    except requests.exceptions.HTTPError as err:
         status_code = err.response.status_code
         try:
             error_detail = err.response.json().get('error', err.response.text)
         except json.JSONDecodeError:
             error_detail = err.response.text
         
-        logging.error(f"Error HTTP {status_code}: {error_detail} (ID: {search_id or 'N/A'})")
+        logging.error(f"Error HTTP {status_code} obteniendo créditos: {error_detail}")
         
         if status_code == 401:
-            message = "Clave API inválida o sin permisos."
+            return False, "Clave API inválida"
         elif status_code == 402:
-            message = "Créditos insuficientes."
-        elif status_code == 404:
-            message = "Recurso no encontrado o búsqueda expirada."
+            return False, "Sin créditos disponibles"
         else:
-            message = f"Error {status_code}: {error_detail[:100]}"
+            return False, f"Error {status_code}: {error_detail[:100]}"
             
-        return False, message, search_id
+    except requests.exceptions.Timeout:
+        logging.error(f"Timeout ({REQUEST_TIMEOUT_AUTH}s) obteniendo créditos.")
+        return False, f"Timeout al obtener créditos"
+        
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error de conexión obteniendo créditos: {e}")
+        return False, f"Error de conexión: {e}"
+        
+    except json.JSONDecodeError:
+        resp_text = response.text if response else "N/A"
+        logging.error(f"Error decodificando JSON de créditos. Respuesta: {resp_text[:200]}...")
+        return False, "Error procesando respuesta de créditos"
+        
+    except Exception as e:
+        logging.exception(f"Error inesperado obteniendo créditos: {e}")
+        return False, f"Error inesperado: {e}"

@@ -1,84 +1,26 @@
-############################
-# Python / Build
-############################
+# Python
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.pyd
-*.egg-info/
-build/
-dist/
-*.spec
 
-############################
-# Entorno / Config local
-############################
+# Entorno
 .env
-.env*/
-venv/
 
-############################
-# Logs & Temporales
-############################
+# Exportaciones y backups
+exports/csv/*.csv
+exports/*
+intelx/gui_backup_*.py
+
+# Archivos temporales
 *.log
 *.tmp
-*.cache/
-*.swp
 
-############################
-# Artefactos generados runtime
-############################
-reports/
-exports/
-intelx_checker.log
-backup*/
-*backup*.zip
-
-# Documentos internos no necesarios para release
-AGENDA_MANANA_HTML.md
-BACKUP_INFO_v2.0.txt
-CHANGELOG_v2.0_UX_improvements.md
-CHANGELOG_v2.1_PDF_export.md
-COMPLETION_REPORT.md
-CORRECCIONES_APLICADAS.md
-FUNCIONALIDAD_RESTAURADA.md
-MIGRATION_REPORT.md
-test_app.py
-test_credits.py
-test_credit_refresh.py
-test_ctrlv_real.py
-test_gui_quick.py
-test_html_export.py
-test_html_fixed.py
-test_language_restart.py
-test_layout_fix.py
-test_mandiant_dashboard.py
-test_media_types.py
-test_open_files.py
-test_paste.py
-test_pdf.py
-test_simple_ctrlv.py
-test_treeview_selection.py
-
-############################
-# Scripts internos de prueba / debug (no producción)
-############################
-debug_*.py
-test_*.py
-verify_cleanup.py
-run_import_test.py
-demo_layout_fixed.py
-launch_debug.py
-list_all_html.py
-open_latest_html.py
-eug.gde.gob.ar_
-
-############################
-# IDE / OS
-############################
+# IDE/OS
 .vscode/
-.idea/
+*.swp
 .DS_Store
 Thumbs.db
 
-# Fin .gitignore extendido
+# Otros
+# Puedes agregar aquí otros archivos o carpetas que no quieras versionar

@@ -7,6 +7,37 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def analyze_results_for_report(data):
+    analysis = {
+        'total_records': len(data),
+        'risk_assessment': {'overall_risk': 'LOW'},
+        'temporal_analysis': {},
+        'source_distribution': {},
+        'content_analysis': {},
+        'recommendations': [],
+        'iocs': {'domains': [], 'ips': [], 'emails': [], 'urls': []},
+        'timeline': []
+    }
+    try:
+        buckets = Counter()
+        media = Counter()
+        dates = []
+        for item in data:
+            buckets[item.get('bucket', 'N/A')] += 1
+            media[item.get('media', 'N/A')] += 1
+            if item.get('date'):
+                dates.append(item.get('date'))
+
+        analysis['source_distribution'] = dict(buckets)
+        analysis['content_analysis'] = dict(media)
+        analysis['iocs'] = extract_iocs(data)
+        analysis['recommendations'] = ["Revisar hallazgos", "Monitorear IOCs"]
+        return analysis
+    except Exception:
+        logger.exception('Error analizando resultados')
+        return analysis
+
+
 def extract_iocs(data, max_items=50):
     domains = set()
     emails = set()
@@ -29,4 +60,31 @@ def extract_iocs(data, max_items=50):
         'ips': list(ips)[:max_items],
         'emails': list(emails)[:max_items],
         'urls': list(urls)[:max_items]
+    }
+
+
+def clean_data_for_mandiant_report(data):
+    clean = []
+    for item in data:
+        if item.get('name') and item.get('bucket') and item.get('name').lower() not in ['unknown', '', 'null']:
+            clean.append(item)
+    return clean
+
+
+def prepare_mandiant_chart_data(clean_data, analysis):
+    sources = {}
+    media_types = {}
+    for item in clean_data:
+        b = item.get('bucket', '')
+        m = item.get('media', '')
+        if b:
+            sources[b] = sources.get(b, 0) + 1
+        if m:
+            media_types[m] = media_types.get(m, 0) + 1
+    timeline = {'dates': [], 'counts': []}
+    return {
+        'sources': sources,
+        'media_types': media_types,
+        'timeline': timeline,
+        'total_records': len(clean_data)
     }

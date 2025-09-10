@@ -3,126 +3,170 @@
 These functions are UI-agnostic and return the path of the created file. The GUI
 can display messages or open the file/folder as needed.
 """
+from __future__ import annotations
+
 import os
 import json
 import csv
-import threading
-import logging
 from datetime import datetime
-from typing import List, Dict, Any, Callable
-
-from .html_report import generate_html_report
-from .utils import sanitize_filename
-from . import ui_components # Para los diálogos
+from typing import List, Dict, Any, Optional
+import logging
 
 logger = logging.getLogger(__name__)
 
-def _get_export_filepath(search_term: str, format_name: str) -> str:
-    """Genera una ruta de archivo estandarizada para la exportación."""
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    # Asegurarse de que el directorio de reportes exista
-    reports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
-    os.makedirs(reports_dir, exist_ok=True)
-    
-    sanitized_term = sanitize_filename(search_term or 'IntelX_Report')
-    filename = f"{sanitized_term}_{timestamp}.{format_name.lower()}"
-    return os.path.join(reports_dir, filename)
 
-def export_to_csv(records: List[Dict[str, Any]], output_filepath: str, **kwargs):
-    """Exporta una lista de diccionarios a un archivo CSV."""
+def _default_exports_dir(kind: str) -> str:
+    base = os.path.dirname(os.path.dirname(__file__))
+    path = os.path.join(base, 'exports', kind)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _timestamped_name(base_name: str) -> str:
+    return f"{base_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}."  # caller appends ext
+
+
+def export_to_csv(records: List[Dict[str, Any]], filename: Optional[str] = None, exports_dir: Optional[str] = None) -> str:
+    """Export records to CSV. Returns the file path.
+
+    If filename is not provided a timestamped name will be generated.
+    """
+    if exports_dir is None:
+        exports_dir = _default_exports_dir('csv')
+
+    if not filename:
+        filename = _timestamped_name('intelx_export') + 'csv'
+    filepath = os.path.join(exports_dir, filename)
+
     try:
-        if not records:
-            return None
-        
-        # Encabezados dinámicos basados en todas las claves posibles
-        headers = sorted(list(set(key for record in records for key in record.keys())))
-        
-        with open(output_filepath, 'w', encoding='utf-8', newline='') as fh:
-            writer = csv.DictWriter(fh, fieldnames=headers, extrasaction='ignore')
+        # Determine headers as union of all keys in records
+        keys = []
+        for r in records:
+            for k in r.keys():
+                if k not in keys:
+                    keys.append(k)
+
+        with open(filepath, 'w', encoding='utf-8', newline='') as fh:
+            writer = csv.DictWriter(fh, fieldnames=keys, extrasaction='ignore')
             writer.writeheader()
-            for record in records:
-                # Asegurar que todos los valores sean primitivos
-                row = {k: str(v) if v is not None else '' for k, v in record.items()}
+            for r in records:
+                # Ensure all values are primitives or strings
+                row = {k: ('' if r.get(k) is None else str(r.get(k))) for k in keys}
                 writer.writerow(row)
-        logger.info(f"Exportación a CSV completada en: {output_filepath}")
-        return output_filepath
+
+        logger.info('CSV export written: %s', filepath)
+        return filepath
+
     except Exception as e:
-        logger.exception(f"Error al exportar a CSV en {output_filepath}")
+        logger.exception('Error writing CSV export')
         raise
 
-def export_to_json(records: List[Dict[str, Any]], output_filepath: str, **kwargs):
-    """Exporta una lista de diccionarios a un archivo JSON."""
+
+def export_to_json(records: List[Dict[str, Any]], filename: Optional[str] = None, exports_dir: Optional[str] = None) -> str:
+    """Export records to JSON (pretty printed). Returns the file path."""
+    if exports_dir is None:
+        exports_dir = _default_exports_dir('json')
+
+    if not filename:
+        filename = _timestamped_name('intelx_export') + 'json'
+    filepath = os.path.join(exports_dir, filename)
+
     try:
-        with open(output_filepath, 'w', encoding='utf-8') as fh:
+        with open(filepath, 'w', encoding='utf-8') as fh:
             json.dump(records, fh, indent=2, ensure_ascii=False)
-        logger.info(f"Exportación a JSON completada en: {output_filepath}")
-        return output_filepath
-    except Exception as e:
-        logger.exception(f"Error al exportar a JSON en {output_filepath}")
+
+        logger.info('JSON export written: %s', filepath)
+        return filepath
+
+    except Exception:
+        logger.exception('Error writing JSON export')
         raise
 
-def export_to_html(records: List[Dict[str, Any]], output_filepath: str, search_term: str = "", app_version: str = "2.0.0", **kwargs):
-    """Exporta una lista de diccionarios a un archivo HTML."""
+
+def select_records_for_export(records: List[Dict[str, Any]], selected_ids: Optional[List[str]] = None, id_field: str = 'storageid') -> List[Dict[str, Any]]:
+    """Return a subset of records filtered by a list of ids (id_field).
+
+    If selected_ids is None or empty the full records list is returned.
+    """
+    if not selected_ids:
+        return records
+
+    id_set = set(str(i) for i in selected_ids)
+    filtered = [r for r in records if str(r.get(id_field, '')) in id_set]
+    return filtered
+
+
+def generate_pdf_report(records: List[Dict[str, Any]], filepath: Optional[str] = None, title: Optional[str] = None) -> str:
+    # Prefer the richer generator implemented in intelx.pdf_report if available
     try:
-        return generate_html_report(records, output_filepath, search_term, app_version)
+        from .pdf_report import generate_pdf_report as rich_pdf
+    except Exception:
+        rich_pdf = None
+
+    if not filepath:
+        exports_dir = _default_exports_dir('pdf')
+        filename = _timestamped_name('intelx_report') + 'pdf'
+        filepath = os.path.join(exports_dir, filename)
+
+    if rich_pdf:
+        return rich_pdf(records, filepath, search_term=title)
+
+    # Fallback minimal PDF generator (uses reportlab.canvas)
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.units import mm
     except Exception as e:
-        logger.exception(f"Error al exportar a HTML en {output_filepath}")
+        logger.exception('reportlab not available for PDF generation')
         raise
 
-def export_safe(parent_app, export_function: Callable, records: List[Dict], format_name: str, **kwargs):
-    """
-    Ejecuta una función de exportación en un hilo separado para no bloquear la UI.
-    Maneja la actualización de la barra de estado y los diálogos de éxito/error.
-    """
-    if not records:
-        ui_components.show_custom_messagebox(parent_app, "Sin Datos", "No hay resultados para exportar.", "warning")
-        return
+    if title is None:
+        title = 'IntelX Report'
 
-    search_term = parent_app.term_entry.get().strip()
-    
-    # Iniciar el worker en un hilo
-    thread = threading.Thread(
-        target=_export_worker,
-        args=(parent_app, export_function, records, format_name, search_term),
-        kwargs=kwargs
-    )
-    thread.daemon = True
-    thread.start()
-
-def _export_worker(parent_app, export_function: Callable, records: List[Dict], format_name: str, search_term: str, **kwargs):
-    """Worker que se ejecuta en un hilo para realizar la exportación."""
     try:
-        # Actualizar UI - Inicio
-        def update_status_start():
-            parent_app.status_label.configure(text=f"Exportando a {format_name}...")
-            parent_app.progress_bar.start()
-        parent_app.after(0, update_status_start)
+        c = canvas.Canvas(filepath, pagesize=A4)
+        width, height = A4
 
-        # Generar ruta y ejecutar exportación
-        output_filepath = _get_export_filepath(search_term, format_name)
-        
-        # Pasar argumentos específicos a la función de exportación
-        export_kwargs = kwargs.copy()
-        if export_function == generate_html_report:
-            export_kwargs['app_version'] = parent_app.app_version
-        
-        filepath = export_function(records, output_filepath, **export_kwargs)
+        # Header
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(20 * mm, height - 20 * mm, title)
+        c.setFont('Helvetica', 9)
+        c.drawString(20 * mm, height - 26 * mm, f'Generated: {datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")}')
 
-        # Actualizar UI - Éxito
-        def update_status_success():
-            parent_app.status_label.configure(text=f"Exportación a {format_name} completada.")
-            parent_app.progress_bar.stop()
-            parent_app.progress_bar.set(0)
-            ui_components.show_export_success_dialog(parent_app, filepath)
-        parent_app.after(0, update_status_success)
+        # Summary
+        c.setFont('Helvetica-Bold', 11)
+        c.drawString(20 * mm, height - 36 * mm, f'Total Records: {len(records)}')
 
-    except Exception as e:
-        logger.exception(f"Error exportando a {format_name}")
-        # Actualizar UI - Error
-        def update_status_error():
-            error_message = str(e)
-            parent_app.status_label.configure(text=f"Error en exportación a {format_name}.")
-            parent_app.progress_bar.stop()
-            parent_app.progress_bar.set(0)
-            ui_components.show_custom_messagebox(parent_app, 'Error', f"Error exportando a {format_name}: {error_message}", 'error')
-        parent_app.after(0, update_status_error)
+        # Draw a simple table with first N records
+        max_rows = 20
+        y = height - 46 * mm
+        c.setFont('Helvetica', 8)
+
+        if records:
+            # Determine columns to show (date, name, bucket, systemid)
+            cols = ['date', 'name', 'bucket', 'systemid']
+            col_x = [20 * mm, 60 * mm, 140 * mm, 170 * mm]
+
+            # Header row
+            for i, col in enumerate(cols):
+                c.drawString(col_x[i], y, col.upper())
+            y -= 6 * mm
+
+            for row in records[:max_rows]:
+                for i, col in enumerate(cols):
+                    val = row.get(col, '')
+                    text = str(val)[:50]
+                    c.drawString(col_x[i], y, text)
+                y -= 6 * mm
+                if y < 30 * mm:
+                    c.showPage()
+                    y = height - 20 * mm
+
+        c.showPage()
+        c.save()
+        logger.info('PDF generated: %s', filepath)
+        return filepath
+
+    except Exception:
+        logger.exception('Error generating PDF')
+        raise
