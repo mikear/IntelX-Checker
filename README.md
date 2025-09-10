@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # IntelX Checker V2 🕵️‍♂️
 
 ![Banner de portada](docs/assets/banner.jpg)
