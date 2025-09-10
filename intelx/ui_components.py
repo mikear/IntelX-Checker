@@ -4,16 +4,7 @@ Provides reusable UI dialogs and components for the IntelX Checker application
 """
 import tkinter as tk
 from tkinter import messagebox, filedialog, simpledialog
-try:
-    import customtkinter as ctk
-except ImportError:
-    import tkinter as ctk
-    ctk.CTk = ctk.Tk
-    ctk.CTkFrame = ctk.Frame
-    ctk.CTkLabel = ctk.Label
-    ctk.CTkEntry = ctk.Entry
-    ctk.CTkButton = ctk.Button
-    ctk.CTkToplevel = ctk.Toplevel
+import customtkinter as ctk
 
 import webbrowser
 import logging
@@ -22,7 +13,41 @@ import sys
 from typing import Optional, List, Dict, Any
 from . import exports as exports_module
 
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = None
+    ImageTk = None
+
 logger = logging.getLogger(__name__)
+
+def set_dialog_icon(dialog_window):
+    """Configurar icono para ventanas de diálogo"""
+    try:
+        # Buscar archivo de icono
+        icon_paths = [
+            os.path.join(os.path.dirname(__file__), '..', 'docs', 'icon.ico'),
+            os.path.join(os.path.dirname(__file__), '..', 'docs', 'icon.png'),
+            os.path.join(os.path.dirname(__file__), 'icon.ico'),
+            os.path.join(os.path.dirname(__file__), 'icon.png')
+        ]
+        
+        for icon_path in icon_paths:
+            if os.path.exists(icon_path):
+                if icon_path.endswith('.ico'):
+                    dialog_window.iconbitmap(icon_path)
+                    break
+                elif icon_path.endswith('.png') and Image and ImageTk:
+                    # Usar PIL para cargar PNG si está disponible
+                    img = Image.open(icon_path)
+                    img = img.resize((32, 32), Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+                    dialog_window.iconphoto(True, photo)
+                    # Mantener referencia en el dialog para evitar garbage collection
+                    dialog_window._icon_photo = photo
+                    break
+    except Exception as e:
+        logger.debug(f"No se pudo cargar el icono del diálogo: {e}")
 
 class ApiKeyDialog:
     """Dialog for managing API key"""
@@ -33,6 +58,9 @@ class ApiKeyDialog:
         self.dialog.geometry("400x200")
         self.dialog.transient(parent)
         self.dialog.grab_set()
+        
+        # Configurar icono del diálogo
+        set_dialog_icon(self.dialog)
         
         # Center dialog
         self.dialog.update_idletasks()
@@ -97,6 +125,9 @@ class PreviewWindow:
         self.window.title(f"Preview - {record.get('media', 'Unknown')}")
         self.window.geometry("800x600")
         self.window.transient(parent)
+        
+        # Configurar icono del diálogo
+        set_dialog_icon(self.window)
         
         self.record = record
         self.storage_id = record.get('storageid', '')
@@ -165,25 +196,161 @@ Date: {self.record.get('date', 'N/A')}"""
         self.window.destroy()
 
 def show_custom_messagebox(parent, title, message, msg_type="info"):
-    """Show custom messagebox with consistent styling"""
-    if msg_type == "info":
-        messagebox.showinfo(title, message, parent=parent)
-    elif msg_type == "warning":
-        messagebox.showwarning(title, message, parent=parent)
-    elif msg_type == "error":
-        messagebox.showerror(title, message, parent=parent)
-    else:
-        messagebox.showinfo(title, message, parent=parent)
+    """Show custom messagebox with consistent styling and icons"""
+    # Para mayor compatibilidad, crear un diálogo personalizado con icono
+    dialog = ctk.CTkToplevel(parent)
+    dialog.title(title)
+    dialog.geometry("400x200")
+    dialog.transient(parent)
+    dialog.grab_set()
+    dialog.resizable(False, False)
+    
+    # Configurar icono del diálogo
+    set_dialog_icon(dialog)
+    
+    # Centrar diálogo
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (400 // 2)
+    y = (dialog.winfo_screenheight() // 2) - (200 // 2)
+    dialog.geometry(f"400x200+{x}+{y}")
+    
+    # Marco principal
+    main_frame = ctk.CTkFrame(dialog)
+    main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+    
+    # Mensaje
+    message_label = ctk.CTkLabel(main_frame, text=message, font=("Arial", 12), 
+                                wraplength=350, justify="left")
+    message_label.pack(pady=20, expand=True)
+    
+    # Botón OK
+    ok_btn = ctk.CTkButton(main_frame, text="OK", command=dialog.destroy, width=100)
+    ok_btn.pack(pady=(0, 10))
+    
+    # Esperar a que se cierre el diálogo
+    dialog.wait_window()
+
+def show_custom_question_dialog(parent, title, message):
+    """Show custom yes/no question dialog with consistent styling and icons"""
+    result = {"value": False}
+    
+    dialog = ctk.CTkToplevel(parent)
+    dialog.title(title)
+    dialog.geometry("400x200")
+    dialog.transient(parent)
+    dialog.grab_set()
+    dialog.resizable(False, False)
+    
+    # Configurar icono del diálogo
+    set_dialog_icon(dialog)
+    
+    # Centrar diálogo
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (400 // 2)
+    y = (dialog.winfo_screenheight() // 2) - (200 // 2)
+    dialog.geometry(f"400x200+{x}+{y}")
+    
+    # Marco principal
+    main_frame = ctk.CTkFrame(dialog)
+    main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+    
+    # Mensaje
+    message_label = ctk.CTkLabel(main_frame, text=message, font=("Arial", 12), 
+                                wraplength=350, justify="left")
+    message_label.pack(pady=20, expand=True)
+    
+    # Marco de botones
+    button_frame = ctk.CTkFrame(main_frame)
+    button_frame.pack(pady=(0, 10))
+    
+    def on_yes():
+        result["value"] = True
+        dialog.destroy()
+    
+    def on_no():
+        result["value"] = False
+        dialog.destroy()
+    
+    # Botones
+    yes_btn = ctk.CTkButton(button_frame, text="Sí", command=on_yes, width=80)
+    yes_btn.pack(side="left", padx=(0, 10))
+    
+    no_btn = ctk.CTkButton(button_frame, text="No", command=on_no, width=80)
+    no_btn.pack(side="left")
+    
+    # Esperar a que se cierre el diálogo
+    dialog.wait_window()
+    return result["value"]
+
+def show_custom_yesnocancel_dialog(parent, title, message):
+    """Show custom yes/no/cancel question dialog with consistent styling and icons"""
+    result = {"value": None}
+    
+    dialog = ctk.CTkToplevel(parent)
+    dialog.title(title)
+    dialog.geometry("450x250")
+    dialog.transient(parent)
+    dialog.grab_set()
+    dialog.resizable(False, False)
+    
+    # Configurar icono del diálogo
+    set_dialog_icon(dialog)
+    
+    # Centrar diálogo
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (450 // 2)
+    y = (dialog.winfo_screenheight() // 2) - (250 // 2)
+    dialog.geometry(f"450x250+{x}+{y}")
+    
+    # Marco principal
+    main_frame = ctk.CTkFrame(dialog)
+    main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+    
+    # Mensaje
+    message_label = ctk.CTkLabel(main_frame, text=message, font=("Arial", 12), 
+                                wraplength=400, justify="left")
+    message_label.pack(pady=20, expand=True)
+    
+    # Marco de botones
+    button_frame = ctk.CTkFrame(main_frame)
+    button_frame.pack(pady=(0, 10))
+    
+    def on_yes():
+        result["value"] = True
+        dialog.destroy()
+    
+    def on_no():
+        result["value"] = False
+        dialog.destroy()
+    
+    def on_cancel():
+        result["value"] = None
+        dialog.destroy()
+    
+    # Botones
+    yes_btn = ctk.CTkButton(button_frame, text="Sí", command=on_yes, width=80)
+    yes_btn.pack(side="left", padx=(0, 10))
+    
+    no_btn = ctk.CTkButton(button_frame, text="No", command=on_no, width=80)
+    no_btn.pack(side="left", padx=(0, 10))
+    
+    cancel_btn = ctk.CTkButton(button_frame, text="Cancelar", command=on_cancel, width=80)
+    cancel_btn.pack(side="left")
+    
+    # Esperar a que se cierre el diálogo
+    dialog.wait_window()
+    return result["value"]
 
 def show_export_success_dialog(parent, filepath):
     """Show export success dialog with option to open file/folder"""
     filename = os.path.basename(filepath)
     folder = os.path.dirname(filepath)
     
-    result = messagebox.askyesno(
+    # Usar diálogo personalizado con icono
+    result = show_custom_question_dialog(
+        parent,
         "Exportación Exitosa",
-        f"Archivo exportado exitosamente:\n{filename}\n\n¿Desea abrir la carpeta de destino?",
-        parent=parent
+        f"Archivo exportado exitosamente:\n{filename}\n\n¿Desea abrir la carpeta de destino?"
     )
     
     if result:
@@ -194,7 +361,7 @@ def show_export_success_dialog(parent, filepath):
                 os.system(f'open "{folder}"' if sys.platform == 'darwin' else f'xdg-open "{folder}"')
         except Exception as e:
             logger.exception("Error opening folder")
-            messagebox.showerror("Error", f"No se pudo abrir la carpeta: {e}", parent=parent)
+            show_custom_messagebox(parent, "Error", f"No se pudo abrir la carpeta: {e}", "error")
 
 def get_records_to_export_dialog(parent, all_records, selected_ids=None):
     """Dialog to choose what records to export"""
@@ -202,14 +369,14 @@ def get_records_to_export_dialog(parent, all_records, selected_ids=None):
         # No selection, export all
         return all_records
     
-    # Ask user what to export
-    choice = messagebox.askyesnocancel(
+    # Ask user what to export usando diálogo personalizado
+    choice = show_custom_yesnocancel_dialog(
+        parent,
         "Exportar Datos",
         f"¿Qué desea exportar?\n\n"
         f"Sí: Solo elementos seleccionados ({len(selected_ids)} elementos)\n"
         f"No: Todos los resultados ({len(all_records)} elementos)\n"
-        f"Cancelar: Cancelar exportación",
-        parent=parent
+        f"Cancelar: Cancelar exportación"
     )
     
     if choice is True:
@@ -244,6 +411,9 @@ def show_export_selection_dialog(parent, records):
     dialog.transient(parent)
     dialog.grab_set()
     
+    # Configurar icono del diálogo
+    set_dialog_icon(dialog)
+    
     # Center dialog
     dialog.update_idletasks()
     x = (dialog.winfo_screenwidth() // 2) - (300 // 2)
@@ -268,9 +438,6 @@ def show_export_selection_dialog(parent, records):
                              command=lambda: _export_and_close(dialog, records, "json"))
     json_btn.pack(pady=5, fill="x")
     
-    pdf_btn = ctk.CTkButton(main_frame, text="Exportar a PDF", 
-                            command=lambda: _export_and_close(dialog, records, "pdf"))
-    pdf_btn.pack(pady=5, fill="x")
     
     # Cancel button
     cancel_btn = ctk.CTkButton(main_frame, text="Cancelar", command=dialog.destroy)
@@ -284,8 +451,8 @@ def _export_and_close(dialog, records, export_type):
             filepath = exports_module.export_to_csv(records, "seleccion")
         elif export_type == "json":
             filepath = exports_module.export_to_json(records, "seleccion")
-        elif export_type == "pdf":
-            filepath = exports_module.generate_pdf_report(records, title="Selección")
+    # elif export_type == "pdf":
+    #     filepath = exports_module.generate_pdf_report(records, title="Selección")
         
         if filepath:
             dialog.destroy()
@@ -337,6 +504,9 @@ class AboutDialog:
         self.dialog.transient(parent)
         self.dialog.grab_set()
         self.dialog.resizable(False, False)
+        
+        # Configurar icono del diálogo
+        set_dialog_icon(self.dialog)
         
         # Center dialog
         self.dialog.update_idletasks()

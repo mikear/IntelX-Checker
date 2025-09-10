@@ -19,6 +19,6 @@ tkhtmlview>=0.3.1
 
 # PDF generation and charts
 # Para generar reportes PDF con gráficos estadísticos
-reportlab>=4.0.0
+# reportlab>=4.0.0
 matplotlib>=3.7.0
 pandas>=2.0.0

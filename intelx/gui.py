@@ -64,6 +64,9 @@ class IntelXCheckerApp(ctk.CTk):
         self.current_language = "es"
         self.app_version = "2.0.0"
         
+        # Configurar icono de la aplicación
+        self._set_application_icon()
+        
         # --- Fuentes por defecto ---
         self.fonts = {
             "main": ("Arial", 14),
@@ -90,7 +93,7 @@ class IntelXCheckerApp(ctk.CTk):
                 "Archivo": "Archivo",
                 "Exportar a CSV": "Exportar a CSV...",
                 "Exportar a JSON": "Exportar a JSON...",
-                "Exportar a PDF": "Exportar a PDF...",
+                # "Exportar a PDF": "Exportar a PDF...",
                 "Exportar a HTML": "Exportar a HTML...",
                 "Vista Previa": "Vista Previa",
                 "Seleccionar Todo": "Seleccionar Todo",
@@ -118,7 +121,7 @@ class IntelXCheckerApp(ctk.CTk):
                 "Archivo": "File",
                 "Exportar a CSV": "Export to CSV...",
                 "Exportar a JSON": "Export to JSON...",
-                "Exportar a PDF": "Export to PDF...",
+                # "Exportar a PDF": "Export to PDF...",
                 "Exportar a HTML": "Export to HTML...",
                 "Vista Previa": "Preview",
                 "Seleccionar Todo": "Select All",
@@ -153,6 +156,34 @@ class IntelXCheckerApp(ctk.CTk):
         
         # Cargar configuración
         self._load_api_config()
+        
+    def _set_application_icon(self):
+        """Configurar icono de la aplicación"""
+        try:
+            # Buscar archivo de icono
+            icon_paths = [
+                os.path.join(os.path.dirname(__file__), '..', 'docs', 'icon.ico'),
+                os.path.join(os.path.dirname(__file__), '..', 'docs', 'icon.png'),
+                os.path.join(os.path.dirname(__file__), 'icon.ico'),
+                os.path.join(os.path.dirname(__file__), 'icon.png')
+            ]
+            
+            for icon_path in icon_paths:
+                if os.path.exists(icon_path):
+                    if icon_path.endswith('.ico'):
+                        self.iconbitmap(icon_path)
+                        break
+                    elif icon_path.endswith('.png') and Image and ImageTk:
+                        # Usar PIL para cargar PNG si está disponible
+                        img = Image.open(icon_path)
+                        img = img.resize((32, 32), Image.Resampling.LANCZOS)
+                        photo = ImageTk.PhotoImage(img)
+                        self.iconphoto(True, photo)
+                        # Mantener referencia para evitar garbage collection
+                        self._icon_photo = photo
+                        break
+        except Exception as e:
+            logger.debug(f"No se pudo cargar el icono: {e}")
         
     def _load_saved_language(self):
         """Carga el idioma guardado"""
@@ -231,6 +262,8 @@ class IntelXCheckerApp(ctk.CTk):
             self.results_tree.heading(col, text=col.capitalize(), anchor="w")
             width = column_widths.get(col, 120)
             self.results_tree.column(col, width=width, minwidth=60)
+            # Agregar binding para ordenar al hacer clic en el header
+            self.results_tree.heading(col, command=lambda c=col: self._sort_treeview_by_column(c, False))
         
         # Scrollbars para treeview
         v_scrollbar = ttk.Scrollbar(results_frame, orient="vertical", command=self.results_tree.yview)
@@ -256,10 +289,19 @@ class IntelXCheckerApp(ctk.CTk):
         self.status_label = ctk.CTkLabel(status_frame, text="Listo.", font=self.fonts["tertiary"])
         self.status_label.pack(side="left", padx=(10, 5))
         
-        # Barra de progreso
-        self.progress_bar = ctk.CTkProgressBar(status_frame, width=200)
-        self.progress_bar.pack(side="right", padx=(5, 10))
-        self.progress_bar.set(0)
+        # Frame para barra de progreso y texto
+        progress_container = ctk.CTkFrame(status_frame)
+        progress_container.pack(side="right", padx=(5, 10))
+        
+        # Etiqueta de progreso
+        self.progress_label = ctk.CTkLabel(progress_container, text="", font=self.fonts["tertiary"])
+        self.progress_label.pack(pady=(2, 0))
+        
+        # Barra de progreso mejorada
+        self.progress_bar = ctk.CTkProgressBar(progress_container, width=200, height=8)
+        self.progress_bar.pack(pady=(0, 2))
+        if hasattr(self, "progress_bar"):
+            self.progress_bar.set(0)
     
     def _setup_menus(self):
         """Configurar menús"""
@@ -271,7 +313,7 @@ class IntelXCheckerApp(ctk.CTk):
         menubar.add_cascade(label="Archivo", menu=file_menu)
         file_menu.add_command(label="Exportar a CSV...", command=self.export_to_csv_safe)
         file_menu.add_command(label="Exportar a JSON...", command=self.export_to_json_safe)
-        file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf_safe)
+    # file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf_safe)
         file_menu.add_command(label="Exportar a HTML...", command=self.export_to_html_safe)
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.quit)
@@ -305,6 +347,31 @@ class IntelXCheckerApp(ctk.CTk):
         self.context_menu.add_command(label="Copiar", command=self.copy_selected)
         self.context_menu.add_command(label="Exportar Selección", command=self.export_selection)
 
+    def _sort_treeview_by_column(self, col, reverse):
+        """Ordena el Treeview por la columna seleccionada."""
+        # Obtener todos los items y sus valores
+        items = [(self.results_tree.set(k, col), k) for k in self.results_tree.get_children("")]
+        # Función de ordenamiento segura
+        def sort_key(item):
+            val = str(item[0])  # Convertir a string siempre
+            # Intentar convertir a número si es posible
+            if val.replace('.', '', 1).replace('-', '', 1).isdigit():
+                try:
+                    return float(val)
+                except ValueError:
+                    return val.lower()
+            return val.lower()
+        
+        # Ordenar items
+        items.sort(key=sort_key, reverse=reverse)
+        
+        # Reordenar los items en el treeview
+        for index, (val, k) in enumerate(items):
+            self.results_tree.move(k, '', index)
+        
+        # Alternar el orden para el próximo clic
+        self.results_tree.heading(col, command=lambda c=col: self._sort_treeview_by_column(c, not reverse))
+
     def _set_language(self, lang):
         """Cambiar idioma"""
         self.current_language = lang
@@ -332,7 +399,8 @@ class IntelXCheckerApp(ctk.CTk):
         self.cancel_button.configure(text=lang["Cancelar"])
         self.filter_entry.configure(placeholder_text=lang["Filtrar resultados"])
         self.credits_label.configure(text=f"{lang['Créditos']} {self.credits}")
-        self.status_label.configure(text=lang["Listo"])
+        if hasattr(self, "status_label"):
+            self.status_label.configure(text=lang["Listo"])
         
         # Actualizar headers del treeview
         self._update_treeview_headers()
@@ -370,11 +438,11 @@ class IntelXCheckerApp(ctk.CTk):
         """Buscar en IntelX"""
         term = self.term_entry.get().strip()
         if not term:
-            messagebox.showwarning("Error", "Ingrese un término de búsqueda")
+            ui_components.show_custom_messagebox(self, "Error", "Ingrese un término de búsqueda", "warning")
             return
         
         if not self.api_key:
-            messagebox.showwarning("Error", "Configure su clave API primero")
+            ui_components.show_custom_messagebox(self, "Error", "Configure su clave API primero", "warning")
             self.manage_api_key()
             return
         
@@ -391,8 +459,12 @@ class IntelXCheckerApp(ctk.CTk):
         # Actualizar UI
         self.search_button.configure(state="disabled")
         self.cancel_button.configure(state="normal")
-        self.status_label.configure(text="Iniciando búsqueda...")
-        self.progress_bar.set(0.1)
+        if hasattr(self, "status_label"):
+            self.status_label.configure(text="Iniciando búsqueda...")
+        if hasattr(self, "progress_bar"):
+            self.progress_bar.set(0.1)
+        if hasattr(self, "progress_label"):
+            self.progress_label.configure(text="Preparando...")
         
         # Iniciar búsqueda en hilo separado
         self.search_thread = threading.Thread(target=self._search_worker, args=(term,))
@@ -403,17 +475,25 @@ class IntelXCheckerApp(ctk.CTk):
         """Worker para búsqueda en hilo separado"""
         try:
             # Progreso inicial
-            self.after(0, lambda: self.progress_bar.set(0.3))
-            self.after(0, lambda: self.status_label.configure(text="Conectando con IntelX..."))
+            if hasattr(self, "progress_bar"):
+                self.after(0, lambda: self.progress_bar.set(0.3))
+            if hasattr(self, "progress_label"):
+                self.after(0, lambda: self.progress_label.configure(text="Conectando..."))
+            if hasattr(self, "status_label"):
+                self.after(0, lambda: self.status_label.configure(text="Conectando con IntelX..."))
             
             # Usar módulo API - la función check_intelx ahora retorna (success, data, search_id)
             success, data_or_error, search_id = check_intelx(term, self.api_key)
             
             # Progreso medio
-            self.after(0, lambda: self.progress_bar.set(0.7))
+            if hasattr(self, "progress_bar"):
+                self.after(0, lambda: self.progress_bar.set(0.7))
+            if hasattr(self, "progress_label"):
+                self.after(0, lambda: self.progress_label.configure(text="Procesando..."))
             
             if success:
-                self.after(0, lambda: self.status_label.configure(text="Procesando resultados..."))
+                if hasattr(self, "status_label"):
+                    self.after(0, lambda: self.status_label.configure(text="Procesando resultados..."))
                 
                 # Si data es un dict con 'records', usar esos registros
                 if isinstance(data_or_error, dict) and 'records' in data_or_error:
@@ -427,32 +507,50 @@ class IntelXCheckerApp(ctk.CTk):
                     self.current_records = []
                 
                 # Progreso final
-                self.after(0, lambda: self.progress_bar.set(1.0))
+                if hasattr(self, "progress_bar"):
+                    self.after(0, lambda: self.progress_bar.set(1.0))
+                if hasattr(self, "progress_label"):
+                    self.after(0, lambda: self.progress_label.configure(text="Completado"))
                 
                 if self.current_records and not self.stop_search:
                     self.after(0, self._populate_results)
-                    self.after(0, lambda: self.status_label.configure(text=f"Encontrados {len(self.current_records)} resultados"))
+                    if hasattr(self, "status_label"):
+                        self.after(0, lambda: self.status_label.configure(text=f"Encontrados {len(self.current_records)} resultados"))
                 else:
-                    self.after(0, lambda: self.status_label.configure(text="No se encontraron resultados"))
+                    if hasattr(self, "status_label"):
+                        self.after(0, lambda: self.status_label.configure(text="No se encontraron resultados"))
             else:
                 # Error en la búsqueda
                 error_msg = data_or_error if isinstance(data_or_error, str) else "Error en la búsqueda"
-                self.after(0, lambda: self.status_label.configure(text=error_msg))
-                self.after(0, lambda: self.progress_bar.set(0))
+                if hasattr(self, "status_label"):
+                    self.after(0, lambda: self.status_label.configure(text=error_msg))
+                if hasattr(self, "progress_bar"):
+                    self.after(0, lambda: self.progress_bar.set(0))
+                if hasattr(self, "progress_label"):
+                    self.after(0, lambda: self.progress_label.configure(text="Error"))
                 
         except Exception as e:
             logger.exception("Error en búsqueda")
-            self.after(0, lambda: self.status_label.configure(text=f"Error: {str(e)}"))
-            self.after(0, lambda: self.progress_bar.set(0))
+            if hasattr(self, "status_label"):
+                self.after(0, lambda: self.status_label.configure(text=f"Error: {str(e)}"))
+            if hasattr(self, "progress_bar"):
+                self.after(0, lambda: self.progress_bar.set(0))
+            if hasattr(self, "progress_label"):
+                self.after(0, lambda: self.progress_label.configure(text="Error"))
         finally:
             self.after(0, self._search_finished)
     
     def _populate_results(self):
         """Poblar treeview con resultados usando la estructura real de la API de IntelX"""
+        # Si no estamos en el hilo principal, reprogramar con self.after
+        if threading.current_thread() != threading.main_thread():
+            self.after(0, self._populate_results)
+            return
+
         for i, record in enumerate(self.current_records):
             if self.stop_search:
                 break
-                
+
             # Manejar diferentes tipos de datos de entrada
             if isinstance(record, str):
                 # Si es string, crear un registro básico
@@ -482,7 +580,7 @@ class IntelXCheckerApp(ctk.CTk):
                     'systemid': f'record_{i}',
                     'data': str(record)
                 }
-                
+
             # Fecha formateada (primera prioridad)
             date_str = record_dict.get('date', '')
             if date_str:
@@ -493,37 +591,37 @@ class IntelXCheckerApp(ctk.CTk):
                     date_text = date_str
             else:
                 date_text = 'N/A'
-                
+
             # Formatear datos basándose en la estructura del diccionario
             name = record_dict.get('name', f'Documento {i+1}')
             name = name[:60] + "..." if len(name) > 60 else name
-            
+
             # Extraer IP del nombre o datos
             ip_address = self._extract_ip_address(record_dict)
-            
+
             # Tipo de contenido (type)
             type_val = record_dict.get('type', 0)
             type_text = self._get_type_description(type_val)
-            
+
             # Media type (más descriptivo)
             media_val = record_dict.get('media', 0)
             media_text = self._get_media_description(media_val)
-            
+
             # Bucket con nombre legible
             bucket = record_dict.get('bucket', 'unknown')
             bucket_text = record_dict.get('bucketh', bucket)  # bucketh es el nombre legible
-            
+
             # Tamaño formateado
             size = record_dict.get('size', 0)
             size_text = self._format_file_size(size)
-            
+
             # Puntuación de relevancia (xscore)
             score = record_dict.get('xscore', 0)
             score_text = str(score) if score > 0 else 'N/A'
-            
+
             # System ID
             system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
-            
+
             # Nuevo orden: fecha, nombre, IP, tipo, media, bucket, tamaño, score, systemid
             self.results_tree.insert("", "end", values=(
                 date_text, name, ip_address, type_text, media_text, 
@@ -672,7 +770,10 @@ class IntelXCheckerApp(ctk.CTk):
         self.cancel_button.configure(state="disabled")
         self.stop_search = False
         # Resetear barra de progreso después de un momento
-        self.after(2000, lambda: self.progress_bar.set(0))
+        if hasattr(self, "progress_bar"):
+            self.after(2000, lambda: self.progress_bar.set(0))
+        if hasattr(self, "progress_label"):
+            self.after(2000, lambda: self.progress_label.configure(text=""))
         # Actualizar créditos después de la búsqueda
         self.after(1000, self.refresh_credits)
     
@@ -682,7 +783,10 @@ class IntelXCheckerApp(ctk.CTk):
         # Señalar al evento de cancelación si existe
         if hasattr(self, 'cancel_event') and self.cancel_event:
             self.cancel_event.set()
-        self.status_label.configure(text="Búsqueda cancelada")
+        if hasattr(self, "status_label"):
+            self.status_label.configure(text="Búsqueda cancelada")
+        if hasattr(self, "progress_label"):
+            self.progress_label.configure(text="Cancelado")
         self._search_finished()
     
     def filter_results(self, event=None):
@@ -891,7 +995,7 @@ class IntelXCheckerApp(ctk.CTk):
         """Exportar selección"""
         selection = self.results_tree.selection()
         if not selection:
-            messagebox.showwarning("Error", "No hay elementos seleccionados")
+            ui_components.show_custom_messagebox(self, "Error", "No hay elementos seleccionados", "warning")
             return
         
         # Obtener records seleccionados
@@ -910,24 +1014,29 @@ class IntelXCheckerApp(ctk.CTk):
             ui_components.show_export_selection_dialog(self, selected_records)
 
     # --- Export methods (using modular architecture) ---
+    # def export_to_pdf_safe(self):
+    #     """Exportar a PDF usando módulo de exportación"""
+    #     try:
+    #         records_to_export = self.current_records if self.current_records else self.all_records
+    #         search_term = self.search_entry.get().strip()
+    #         filepath = exports_module.generate_pdf_report(records_to_export, title=search_term)
+    #         ui_components.show_custom_messagebox(self, "Exportación PDF", f"PDF exportado en: {filepath}", "info")
+    #     except Exception as e:
+    #         logger.exception('Error exporting PDF')
+    #         ui_components.show_custom_messagebox(self, 'Error', f'Error exportando PDF: {e}', 'error')
+
     def export_to_csv_safe(self):
         """Exportar a CSV usando módulo de exportación"""
         try:
-            if not self.current_records:
-                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
-                return
-            
-            # Get selection if any  
+            # Get selection if any
             selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
-            
-            # Ask user what to export if there are selections
             records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
             if not records_to_export:
                 return
-                
+
             # Get search term for filename
             search_term = self.term_entry.get().strip() or 'IntelX_Export'
-                
+
             filepath = exports_module.export_to_csv(records_to_export, search_term)
             ui_components.show_export_success_dialog(self, filepath)
             return filepath
@@ -989,7 +1098,7 @@ class IntelXCheckerApp(ctk.CTk):
             ui_components.show_export_success_dialog(self, filepath)
             
             # Ask if user wants to open
-            if messagebox.askyesno("Reporte HTML", "¿Desea abrir el reporte en su navegador?"):
+            if ui_components.show_custom_question_dialog(self, "Reporte HTML", "¿Desea abrir el reporte en su navegador?"):
                 open_in_browser(filepath)
 
             logger.info(f"Reporte HTML generado: {filepath}")
@@ -998,31 +1107,6 @@ class IntelXCheckerApp(ctk.CTk):
         except Exception as e:
             logger.exception("Error generando reporte HTML")
             ui_components.show_custom_messagebox(self, "Error", f"Error generando reporte: {e}", "error")
-
-    def export_to_pdf_safe(self):
-        """Exportar a PDF usando módulo de exportación"""
-        try:
-            if not self.current_records:
-                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
-                return
-            
-            # Get selection if any  
-            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
-                
-            # Ask user what to export if there are selections
-            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
-            if not records_to_export:
-                return
-                
-            # Get search term for title
-            search_term = self.term_entry.get().strip() or 'IntelX Report'
-                
-            filepath = exports_module.generate_pdf_report(records_to_export, title=search_term)
-            ui_components.show_export_success_dialog(self, filepath)
-            return filepath
-        except Exception as e:
-            logger.exception('Error exporting PDF')
-            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando PDF: {e}', 'error')
 
 
 # Provide compatibility for scripts that import the class directly
