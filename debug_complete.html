@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntelX Report - @supbienestar.gob.ar</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+    <style>
+    
+        /* Reset and base styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'SF Pro Display', system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            min-height: 100vh;
+        }
+
+        /* Container and layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 3rem 2rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.2);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.025em;
+        }
+
+        .header-meta {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        /* KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .kpi-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .kpi-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .kpi-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .kpi-change {
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+
+        .kpi-change.positive { color: #059669; }
+        .kpi-change.negative { color: #dc2626; }
+
+        /* Charts section */
+        .charts-section {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .charts-container {
+            width: 100%;
+        }
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .chart-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            height: 350px;
+        }
+
+        .chart-card.chart-wide {
+            grid-column: 1 / -1;
+            height: 400px;
+        }
+
+        .chart-card h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .chart-card canvas {
+            max-height: 280px;
+        }
+
+        .chart-wide canvas {
+            max-height: 320px;
+        }
+
+        /* Table section */
+        .table-section {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
+        }
+
+        /* Filters */
+        .filters-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .filters-row, .search-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: end;
+        }
+
+        .search-row {
+            margin-top: 1rem;
+            justify-content: space-between;
+        }
+
+        .filter-group, .search-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            min-width: 150px;
+        }
+
+        .search-group {
+            flex: 1;
+            max-width: 400px;
+        }
+
+        .filter-group label, .search-group label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .filter-group select, .filter-group input, .search-group input {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .filter-group select:focus, .filter-group input:focus, .search-group input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .btn-secondary {
+            padding: 0.5rem 1rem;
+            background: #6b7280;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .results-info {
+            font-size: 0.875rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        /* Table styles */
+        .table-container {
+            overflow-x: auto;
+            border-radius: 0.75rem;
+            border: 1px solid #e5e7eb;
+        }
+
+        #resultsTable {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        #resultsTable th {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 1rem 0.75rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.875rem;
+            letter-spacing: 0.025em;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        #resultsTable th.sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s ease;
+        }
+
+        #resultsTable th.sortable:hover {
+            background: linear-gradient(135deg, #5855eb 0%, #7c3aed 100%);
+        }
+
+        .sort-icon {
+            margin-left: 0.25rem;
+            font-size: 0.75rem;
+        }
+
+        #resultsTable td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 0.875rem;
+        }
+
+        #resultsTable tbody tr:hover {
+            background: #f9fafb;
+        }
+
+        #resultsTable tbody tr:nth-child(even) {
+            background: #fafafa;
+        }
+
+        #resultsTable tbody tr:nth-child(even):hover {
+            background: #f3f4f6;
+        }
+
+        /* Table cell specific styles */
+        .name-cell, .source-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .score-cell {
+            text-align: center;
+        }
+
+        /* Badges and scores */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+        }
+
+        .badge-email { background: #dbeafe; color: #1e40af; }
+        .badge-dominio { background: #dcfce7; color: #166534; }
+        .badge-ip { background: #fef3c7; color: #92400e; }
+        .badge-documento { background: #e0e7ff; color: #3730a3; }
+        .badge-código { background: #f3e8ff; color: #6b21a8; }
+        .badge-base-de-datos { background: #fed7d7; color: #c53030; }
+        .badge-otro { background: #f3f4f6; color: #374151; }
+
+        .score {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .score-high { background: #fee2e2; color: #dc2626; }
+        .score-medium { background: #fef3c7; color: #d97706; }
+        .score-low { background: #dcfce7; color: #059669; }
+
+        .btn-link {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: #6366f1;
+            color: white;
+            text-decoration: none;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: background-color 0.2s ease;
+        }
+
+        .btn-link:hover {
+            background: #4f46e5;
+        }
+
+        /* Footer */
+        .footer {
+            background: #1f2937;
+            color: #9ca3af;
+            padding: 2rem;
+            border-radius: 1rem;
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.875rem;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 2rem 1rem;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .kpi-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 1rem;
+            }
+
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-card.chart-wide {
+                grid-column: 1;
+            }
+
+            .filters-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-group {
+                min-width: unset;
+            }
+
+            .search-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 1rem;
+            }
+
+            .search-group {
+                max-width: unset;
+            }
+
+            #resultsTable {
+                font-size: 0.75rem;
+            }
+
+            #resultsTable th, #resultsTable td {
+                padding: 0.5rem 0.25rem;
+            }
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: white;
+            }
+
+            .container {
+                max-width: none;
+                padding: 0;
+            }
+
+            .header {
+                background: #6366f1 !important;
+                -webkit-print-color-adjust: exact;
+                color-adjust: exact;
+            }
+
+            .charts-section, .table-section {
+                break-inside: avoid;
+            }
+
+            .btn-link {
+                background: #6366f1 !important;
+                -webkit-print-color-adjust: exact;
+                color-adjust: exact;
+            }
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>📊 IntelX Intelligence Report</h1>
+            <div class="header-meta">
+                <strong>Término de búsqueda:</strong> @supbienestar.gob.ar • 
+                <strong>Resultados:</strong> 334 • 
+                <strong>Generado:</strong> 2025-09-11 18:05:55 UTC • 
+                <strong>Versión:</strong> 2.0.0
+            </div>
+        </header>
+
+        <!-- KPI Section -->
+        <section class="kpi-section">
+            <div class="kpi-grid">
+                
+                <div class="kpi-card">
+                    <div class="kpi-label">📝 Total de Registros</div>
+                    <div class="kpi-value">334</div>
+                    
+                </div>
+            
+
+                <div class="kpi-card">
+                    <div class="kpi-label">📊 Fuentes Únicas</div>
+                    <div class="kpi-value">5</div>
+                    
+                </div>
+            
+
+                <div class="kpi-card">
+                    <div class="kpi-label">📄 Documentos Descargables</div>
+                    <div class="kpi-value">333</div>
+                    
+                </div>
+            
+
+                <div class="kpi-card">
+                    <div class="kpi-label">✅ Metadatos Completos</div>
+                    <div class="kpi-value">100.0%</div>
+                    
+                </div>
+            
+
+                <div class="kpi-card">
+                    <div class="kpi-label">⚠️ Posibles Leaks</div>
+                    <div class="kpi-value">99.7%</div>
+                    
+                </div>
+            
+
+                <div class="kpi-card">
+                    <div class="kpi-label">🌐 Exposición Pública</div>
+                    <div class="kpi-value">0</div>
+                    
+                </div>
+            
+
+                <div class="kpi-card">
+                    <div class="kpi-label">🔍 Indexados</div>
+                    <div class="kpi-value">0</div>
+                    
+                </div>
+            
+
+                <div class="kpi-card">
+                    <div class="kpi-label">🔒 Sensibles</div>
+                    <div class="kpi-value">22</div>
+                    
+                </div>
+            
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="charts-section">
+            <h2 class="section-title">📈 Análisis Visual</h2>
+            
+        <div class="charts-container">
+            <div class="chart-grid">
+                <div class="chart-card">
+                    <h3>Distribución por Tipo de Dato</h3>
+                    <canvas id="dataTypesChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Tipos de Media</h3>
+                    <canvas id="mediaChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Fuentes Principales</h3>
+                    <canvas id="sourcesChart"></canvas>
+                </div>
+                <div class="chart-card chart-wide">
+                    <h3>Evolución Temporal (Últimos 12 Meses)</h3>
+                    <canvas id="temporalChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        </section>
+
+        <!-- Table Section -->
+        <section class="table-section">
+            <h2 class="section-title">🔍 Datos Detallados</h2>
+            
+        <div class="filters-container">
+            <div class="filters-row">
+                <div class="filter-group">
+                    <label for="typeFilter">Tipo de Dato:</label>
+                    <select id="typeFilter">
+                        <option value="">Todos los tipos</option>
+                        <option value="Código">Código</option>
+<option value="Documento">Documento</option>
+<option value="Dominio">Dominio</option>
+<option value="Email">Email</option>
+<option value="IP">IP</option>
+<option value="Otro">Otro</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="sourceFilter">Fuente:</label>
+                    <select id="sourceFilter">
+                        <option value="">Todas las fuentes</option>
+                        <option value="dns">dns</option>
+<option value="leaks.logs">leaks.logs</option>
+<option value="leaks.private.general">leaks.private.general</option>
+<option value="leaks.public.general">leaks.public.general</option>
+<option value="pastes">pastes</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="dateFromFilter">Desde:</label>
+                    <input type="date" id="dateFromFilter">
+                </div>
+                <div class="filter-group">
+                    <label for="dateToFilter">Hasta:</label>
+                    <input type="date" id="dateToFilter">
+                </div>
+                <div class="filter-group">
+                    <button id="clearFilters" class="btn-secondary">Limpiar Filtros</button>
+                </div>
+            </div>
+            <div class="search-row">
+                <div class="search-group">
+                    <label for="searchInput">Buscar:</label>
+                    <input type="text" id="searchInput" placeholder="Buscar en nombre, tipo o fuente...">
+                </div>
+                <div class="results-info">
+                    <span id="resultsCount">Mostrando 334 resultados</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-column="date">
+                            Fecha <span class="sort-icon">↕</span>
+                        </th>
+                        <th class="sortable" data-column="name">
+                            Nombre <span class="sort-icon">↕</span>
+                        </th>
+                        <th class="sortable" data-column="data_type">
+                            Tipo de Dato <span class="sort-icon">↕</span>
+                        </th>
+                        <th class="sortable" data-column="bucket">
+                            Fuente <span class="sort-icon">↕</span>
+                        </th>
+                        <th class="sortable" data-column="media_label">
+                            Media <span class="sort-icon">↕</span>
+                        </th>
+                        <th class="sortable" data-column="xscore">
+                            Puntuación <span class="sort-icon">↕</span>
+                        </th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+        
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>
+                🛡️ IntelX Checker V2 • Versión 2.0.0 • 
+                Generado el 2025-09-11 18:05:55 UTC • 
+                Reporte interactivo standalone
+            </p>
+        </footer>
+    </div>
+
+    <script>
+    
+        // Chart configuration
+        Chart.defaults.font.family = "'Segoe UI', 'SF Pro Display', system-ui, sans-serif";
+        Chart.defaults.font.size = 12;
+        Chart.defaults.color = '#64748b';
+
+        const chartColors = [
+            '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981',
+            '#06b6d4', '#f97316', '#84cc16', '#ef4444', '#6b7280'
+        ];
+
+        const chartData = {"dataTypes": {"labels": ["Documento", "IP", "C\u00f3digo", "Otro", "Email", "Otros"], "values": [171, 91, 29, 22, 20, 1]}, "media": {"labels": ["Text File", "Source Code", "PDF Document", "Word Document", "Paste Document"], "values": [280, 51, 1, 1, 1]}, "sources": {"labels": ["leaks.logs", "leaks.private.general", "leaks.public.general", "dns", "pastes"], "values": [198, 132, 2, 1, 1]}, "temporal": {"labels": ["2024-10", "2024-11", "2024-12", "2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09"], "values": [7, 7, 7, 25, 10, 20, 11, 5, 10, 6, 9, 8]}, "kpis": {"leaks_percentage": 99.7005988023952, "complete_metadata_percentage": 100.0, "downloadable_documents_count": 333}, "exposure": {"public": 0, "indexed": 0, "sensitive": 22}};
+
+        function createChart(canvasId, type, data, options = {}) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            return new Chart(ctx, {
+                type: type,
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 12,
+                                padding: 15,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: '#6366f1',
+                            borderWidth: 1
+                        }
+                    },
+                    ...options
+                }
+            });
+        }
+
+        function initializeCharts() {
+            // Data Types Chart (Doughnut)
+            createChart('dataTypesChart', 'doughnut', {
+                labels: chartData.dataTypes.labels,
+                datasets: [{
+                    data: chartData.dataTypes.values,
+                    backgroundColor: chartColors,
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            }, {
+                cutout: '60%'
+            });
+
+            // Media Chart (Pie)
+            createChart('mediaChart', 'pie', {
+                labels: chartData.media.labels,
+                datasets: [{
+                    data: chartData.media.values,
+                    backgroundColor: chartColors,
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            });
+
+            // Sources Chart (Bar)
+            createChart('sourcesChart', 'bar', {
+                labels: chartData.sources.labels,
+                datasets: [{
+                    label: 'Registros',
+                    data: chartData.sources.values,
+                    backgroundColor: '#6366f1',
+                    borderColor: '#4f46e5',
+                    borderWidth: 1
+                }]
+            }, {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        },
+                        grid: {
+                            color: '#f1f5f9'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45
+                        }
+                    }
+                }
+            });
+
+            // Temporal Chart (Line)
+            createChart('temporalChart', 'line', {
+                labels: chartData.temporal.labels,
+                datasets: [{
+                    label: 'Registros por Mes',
+                    data: chartData.temporal.values,
+                    borderColor: '#6366f1',
+                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#6366f1',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    pointRadius: 5
+                }]
+            }, {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        },
+                        grid: {
+                            color: '#f1f5f9'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize charts when DOM is ready
+        document.addEventListener('DOMContentLoaded', initializeCharts);
+        
+    
+        // Table data and functionality
+        const tableData = [{"date": "2024-09-24T15:00:24.911818Z", "name": "49M BASE CORP UHQ.rar/49M BASE CORP UHQ.csv [Part 301 of 425]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 77, "systemid": "1af32888-cfd6-4eaa-a761-3d6e06dd4260", "data_type": "Otro"}, {"date": "2024-09-24T15:00:22.669557Z", "name": "49M BASE CORP UHQ.rar/49M BASE CORP UHQ.csv [Part 240 of 425]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 76, "systemid": "50740cbe-5b18-4cab-a94e-219eb5310b94", "data_type": "Otro"}, {"date": "2024-09-24T15:00:15.080348Z", "name": "49M BASE CORP UHQ.rar/49M BASE CORP UHQ.csv [Part 10 of 425]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 74, "systemid": "41188e0b-c230-47eb-877b-204b2b5714dc", "data_type": "Otro"}, {"date": "2024-09-10T15:02:01.282153Z", "name": "241kk.rar/241kk_1.csv [Part 230 of 257]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 74, "systemid": "a338be53-a0a3-4541-a4d7-8a6a4ecd8e9b", "data_type": "Otro"}, {"date": "2024-04-15T11:30:43.681715Z", "name": "16kk_mailpass.rar/16kk_mailpass.txt [Part 124 of 135]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 74, "systemid": "e241a94e-f1c0-41b4-b037-040be5123de3", "data_type": "Documento"}, {"date": "2023-08-19T10:25:33.951449Z", "name": "43m EmailPass.txt [Part 118 of 379]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 74, "systemid": "ee61fbc1-af2e-4b7e-869b-3604d8425c4b", "data_type": "Documento"}, {"date": "2023-06-18T08:17:53.79721Z", "name": "EmailPASS Recovery File.txt [Part 19 of 99]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 74, "systemid": "f570b194-6762-4855-a284-4e2283eb37c5", "data_type": "Documento"}, {"date": "2024-03-30T22:18:39.546628Z", "name": "@llinkpass 2.txt [Part 17 of 470]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 73, "systemid": "29030ff6-bcda-4cf5-b70b-1417291f8026", "data_type": "Email"}, {"date": "2023-06-19T11:24:30.239263Z", "name": "rest (8).txt [Part 76 of 76]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 73, "systemid": "37324033-d63f-4d51-bb06-5c3222768b5f", "data_type": "Documento"}, {"date": "2023-06-18T09:39:41.053644Z", "name": "mailpass 700k.txt [Part 6 of 7]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 73, "systemid": "51788b5b-02d9-467e-a3ae-2a80106813b8", "data_type": "Documento"}, {"date": "2023-08-19T10:25:54.574844Z", "name": "43m EmailPass.txt [Part 327 of 379]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 72, "systemid": "3cab7546-5f36-47a1-a74f-52c3d4c92445", "data_type": "Documento"}, {"date": "2023-08-19T10:25:23.144246Z", "name": "43m EmailPass.txt [Part 22 of 379]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 72, "systemid": "7729f639-5708-4955-a1aa-e16a40148c36", "data_type": "Documento"}, {"date": "2023-06-18T08:17:53.706097Z", "name": "EmailPASS Recovery File.txt [Part 18 of 99]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 72, "systemid": "1ecf1c7d-6da6-40aa-9aaa-531e360debb3", "data_type": "Documento"}, {"date": "2023-06-17T13:49:06.394862Z", "name": "1KK PRIVATE (2).txt [Part 8 of 12]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 72, "systemid": "d4d0d42e-0b11-411d-bd33-031d04ccbcdf", "data_type": "Documento"}, {"date": "2023-06-17T13:49:06.075502Z", "name": "1KK PRIVATE (2).txt [Part 5 of 12]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 72, "systemid": "39bae4a8-2490-4eb1-9f76-3ebe59bf58ae", "data_type": "Documento"}, {"date": "2025-03-09T20:40:56.88123Z", "name": "67m_mailpass_by_leakbase.io.txt [Part 533 of 597]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 71, "systemid": "f2fddf89-f413-4cba-8c1e-87ef7c1cb14a", "data_type": "Documento"}, {"date": "2024-09-10T15:04:00.252627Z", "name": "241kk.rar/241kk_5.csv [Part 2 of 257]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 71, "systemid": "fc76e8fd-9210-4e79-b7d9-50ee8555cef7", "data_type": "Otro"}, {"date": "2024-01-14T18:08:33.477128Z", "name": "[EmailPass]Result2023.11.03_00-11-07/[EmailPass]Result2023.11.03_00-11-07.txt [Part 334 of 375]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 71, "systemid": "2d1b870a-c1d7-4fd3-b5ff-78bb3f46e170", "data_type": "Documento"}, {"date": "2023-06-19T11:23:43.262778Z", "name": "rest (5).txt [Part 43 of 43]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 71, "systemid": "9071571e-5f24-4633-aec2-d40bb802b212", "data_type": "Documento"}, {"date": "2023-06-18T08:17:53.153569Z", "name": "EmailPASS Recovery File.txt [Part 14 of 99]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 71, "systemid": "2a437a75-a3a1-4ad3-92ba-b9964029279f", "data_type": "Documento"}, {"date": "2023-06-17T14:02:59.55885Z", "name": "[MailPass].txt [Part 15 of 33]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 71, "systemid": "a7622964-bdda-49b5-aa0e-f193cf890796", "data_type": "Documento"}, {"date": "2023-06-17T14:02:58.724056Z", "name": "[MailPass].txt [Part 6 of 33]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 71, "systemid": "a7491214-2af2-4406-9bcc-42d5e3bfdd49", "data_type": "Documento"}, {"date": "2024-11-15T14:09:48.513707Z", "name": "68kk_Email-Pass.rar/68kk_Email-Pass.txt [Part 552 of 587]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 70, "systemid": "eed79631-3d9c-4f01-9d30-c07a0d0165ed", "data_type": "Documento"}, {"date": "2024-09-10T15:03:02.026675Z", "name": "241kk.rar/241kk_3.csv [Part 169 of 257]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 70, "systemid": "cf15c2ae-3e27-4292-aef7-6c43b96e1167", "data_type": "Otro"}, {"date": "2023-06-19T11:24:30.120345Z", "name": "rest (8).txt [Part 75 of 76]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 70, "systemid": "446db921-ac03-4dbe-bb79-3ceee00c7e64", "data_type": "Documento"}, {"date": "2023-06-19T11:24:29.272279Z", "name": "rest (8).txt [Part 71 of 76]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 70, "systemid": "3779cd2c-f115-41ac-b907-396602469524", "data_type": "Documento"}, {"date": "2023-06-19T11:23:42.713315Z", "name": "rest (5).txt [Part 41 of 43]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 70, "systemid": "1a7cf685-7621-4508-9e1e-2151c6979e4e", "data_type": "Documento"}, {"date": "2023-06-17T14:02:59.370317Z", "name": "[MailPass].txt [Part 13 of 33]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 70, "systemid": "d89ea0ae-43ce-45d6-90f9-0ff32e51cfa8", "data_type": "Documento"}, {"date": "2021-01-21T12:07:25.065145Z", "name": "nitrocloud.tsv [Part 4804 of 5543]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 69, "systemid": "6e15c8e2-d4c8-4e65-99c6-d6ef540e2a8d", "data_type": "Otro"}, {"date": "2021-01-21T12:04:06.234674Z", "name": "nitrocloud.tsv [Part 2752 of 5543]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 69, "systemid": "d29ef8fe-4c96-40ff-a896-f6a7ca207af3", "data_type": "Otro"}, {"date": "2025-07-19T13:52:20.188457Z", "name": "@KURTXT_ULP_FRESH_100_MILLION_URL_LOGIN_PASS_VIP_Source_LIVE_TRAFFIC.txt [Part 192 of 477]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 68, "systemid": "af795d0b-ea8d-4461-8ff1-60a52969b403", "data_type": "Email"}, {"date": "2024-06-25T14:17:20.736186Z", "name": "@segacloud 5000 subs (20).txt [Part 164 of 169]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 68, "systemid": "ed77b79c-325d-437e-bc86-8b63195c8ae3", "data_type": "Email"}, {"date": "2022-07-14T23:12:52.930526Z", "name": "google_playstore_devs_database_880k_2017.csv [Part 40 of 66]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 68, "systemid": "876b927b-f0f7-4bbc-a1cb-e773d6bcd6f8", "data_type": "Otro"}, {"date": "2021-01-21T12:06:22.176002Z", "name": "nitrocloud.tsv [Part 4133 of 5543]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 68, "systemid": "eda75610-0cb4-4357-b12f-1c75830d0e4a", "data_type": "Otro"}, {"date": "2021-01-21T12:03:36.708026Z", "name": "nitrocloud.tsv [Part 2512 of 5543]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 68, "systemid": "ecc35687-6419-427c-9984-55c76cc3c885", "data_type": "Otro"}, {"date": "2021-01-21T11:44:05.530003Z", "name": "nitro_acc_details.tsv [Part 959 of 985]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 68, "systemid": "82a1c4f6-de62-4555-97f7-5c36d3cd2091", "data_type": "Otro"}, {"date": "2021-07-05T09:42:31.815845Z", "name": "Chinese App Store Devops.rar/application [1,814,453].sql [Part 509 of 623]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 67, "systemid": "bec9f486-3648-493e-9df3-64fc907c6973", "data_type": "C\u00f3digo"}, {"date": "2021-01-21T12:06:10.350967Z", "name": "nitrocloud.tsv [Part 3990 of 5543]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 67, "systemid": "87cc0243-2b46-4262-8cda-c961dd6b3994", "data_type": "Otro"}, {"date": "2021-01-21T12:04:07.651402Z", "name": "nitrocloud.tsv [Part 2760 of 5543]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 67, "systemid": "818f4d1a-e6a2-44cb-9f7e-c524f668b7d7", "data_type": "Otro"}, {"date": "2021-01-21T11:58:02.92965Z", "name": "nitrocloud.tsv [Part 11 of 5543]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 67, "systemid": "64059daa-cf15-49aa-be69-7cd46150ccd3", "data_type": "Otro"}, {"date": "2025-01-26T06:15:43.61283Z", "name": "companies-dataset-2023-02-ckgENv.csv.gz [Part 218 of 631]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 66, "systemid": "7c700d08-aa8c-4988-8369-c8f4aecee3db", "data_type": "Otro"}, {"date": "2025-01-03T08:11:40Z", "name": "xss.zip/dbindex.xss.is-forums-140.json [Part 1 of 3]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 66, "systemid": "3b56db31-220d-48d8-8146-3fc1f21de89f", "data_type": "Documento"}, {"date": "2025-01-02T04:09:08.721522Z", "name": "list/list140.txt [Part 215 of 257]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 66, "systemid": "c6bb2e69-5190-49c4-a0fc-d268bcbba42b", "data_type": "Documento"}, {"date": "2024-01-16T09:40:29.306693Z", "name": "1 (2).txt [Part 616 of 819]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 66, "systemid": "26417067-b10c-4eca-a8c2-41d8b98d678c", "data_type": "Documento"}, {"date": "2023-05-01T11:50:57.628041Z", "name": "60kk List U-L-PW.zip/60kk List U-L-PW.txt [Part 517 of 1178]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 66, "systemid": "8cee57a2-e86c-4e72-b461-374ac2b80803", "data_type": "Documento"}, {"date": "2023-11-26T23:23:38.920814Z", "name": "148GB (80).txt [Part 77 of 213]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 65, "systemid": "41f4ff92-f74f-4731-b959-769bcea1ddaa", "data_type": "Documento"}, {"date": "2025-01-02T07:20:21.167934Z", "name": "list/list394.txt [Part 125 of 257]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 64, "systemid": "e4a0eed1-9471-4006-91cd-1e4027b7de61", "data_type": "Documento"}, {"date": "2021-09-21T07:49:45.303213Z", "name": "LinkedIn All 2021 - 2.rar/part-00167.txt [Part 161 of 525]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 64, "systemid": "2d736c0a-c6a0-4e95-ae41-155a9d2619b8", "data_type": "Documento"}, {"date": "2025-08-25T17:12:53.63876Z", "name": "@UP_KURZLOGS PRIVATE ULP [LIVE-TRAFFIC] 20.08.2025 Part 9.txt [Part 472 of 903]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 63, "systemid": "2ee3139c-50e0-4de0-ab73-0f870c2f2953", "data_type": "Email"}, {"date": "2024-06-25T15:29:49.834703Z", "name": "50 000 000 Link Lgin Pass 18/50 000 000 Link Lgin Pass 16.txt [Part 241 of 712]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 63, "systemid": "639a0b99-3b69-439f-bdb4-09d2c868653c", "data_type": "Documento"}, {"date": "2024-06-25T14:15:54.96351Z", "name": "@IGGYCLOUD.txt [Part 75 of 607]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 63, "systemid": "329eba1e-9036-44af-80b9-f1a3ffd1ad9c", "data_type": "Email"}, {"date": "2024-10-03T10:48:59.933509Z", "name": "[GH]154.161.139.54.rar/Important Files/Desktop/New folder (2)/Result.txt [Part 3 of 4]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 62, "systemid": "031c03f3-ff0c-42e8-b1cf-164adb5300c2", "data_type": "IP"}, {"date": "2024-10-03T10:48:59.522077Z", "name": "[GH]154.161.139.54.rar/Important Files/Desktop/desktop soft/Others.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 62, "systemid": "7e13803e-c3b0-4d4e-aa74-045606793b31", "data_type": "IP"}, {"date": "2025-09-04T10:24:03.609154Z", "name": "HUNTER ULP  PVT BY @SKYLORDS69 02-09-2025_part_0005.txt [Part 388 of 649]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 61, "systemid": "222d2646-0319-4375-96b3-30684104d41a", "data_type": "Email"}, {"date": "2024-09-23T11:19:47.604885Z", "name": "50 000 000 Link Login Pass 9.rar/Files_05.07_19.16_8.csv [Part 279 of 816]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 60, "systemid": "f3defe08-689c-4e2a-aeaa-a66f2201df7d", "data_type": "Otro"}, {"date": "2024-07-02T05:17:24.203128Z", "name": "txt @tokyoclouddd.txt [Part 204 of 207]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 60, "systemid": "4ae54691-e4cb-470a-b1d8-7be4b2110f77", "data_type": "Email"}, {"date": "2024-06-25T15:30:06.34609Z", "name": "50 000 000 Link Lgin Pass 18/50 000 000 Link Lgin Pass 16.txt [Part 597 of 712]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 60, "systemid": "a63d5a7b-e24d-427f-a37f-20a2491166a2", "data_type": "Documento"}, {"date": "2024-06-25T15:29:45.979834Z", "name": "50 000 000 Link Lgin Pass 18/50 000 000 Link Lgin Pass 16.txt [Part 153 of 712]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 60, "systemid": "c9f70898-c1b3-47ff-8dfe-1e1c01c67f36", "data_type": "Documento"}, {"date": "2024-06-06T09:01:01.651478Z", "name": "[FR]90.113.144.103.rar/Important Files/Desktop/Base De Don\u00e9e/all database/Argentina.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 60, "systemid": "841b411e-1bbd-4a30-b002-b419bab99bd5", "data_type": "IP"}, {"date": "2023-11-26T23:09:22.588068Z", "name": "148GB (42).txt [Part 64 of 169]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 60, "systemid": "47f4de70-19f3-4410-b64c-a5472fb0e272", "data_type": "Documento"}, {"date": "2024-09-23T11:09:34.953511Z", "name": "50 000 000 Link Lgin Pass 11.rar/50 000 000 Link Lgin Pass 11.csv [Part 407 of 713]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 59, "systemid": "7b558df1-ef48-4ee0-a178-ad0b464ec489", "data_type": "Otro"}, {"date": "2024-07-01T05:55:05.935288Z", "name": "@baseclouds297.txt [Part 53 of 87]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 59, "systemid": "1a8a561f-dfc5-4796-b634-8bcdcf915763", "data_type": "Email"}, {"date": "2024-06-25T14:21:53.137009Z", "name": "free (2).txt [Part 53 of 71]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 59, "systemid": "e36e8bf3-db80-454d-8a8f-c4941bc2ca61", "data_type": "Documento"}, {"date": "2021-10-13T04:37:39.581316Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 74 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 59, "systemid": "b4a10523-fa61-439b-8388-a2c8404b89a5", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:39.044599Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 72 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 59, "systemid": "78903853-ccd2-4e9e-808d-b8a084f6015f", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:10.214216Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 12 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 59, "systemid": "cee6f243-b1f7-4efb-b3f8-37be0d085a5c", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:09.597205Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 10 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 59, "systemid": "f7c2e2c1-0337-4205-99b4-4862e55ba6c6", "data_type": "C\u00f3digo"}, {"date": "2025-01-24T16:40:26.026913Z", "name": "90kk_URLPW_LB.SB_Part_11-30.rar/90kk_URLPW_LB.SB_Part_11-30.txt [Part 786 of 1514]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 58, "systemid": "1e9edacf-8084-4f38-87fd-b3aaed14a71d", "data_type": "Documento"}, {"date": "2025-01-24T16:38:36.31284Z", "name": "87kk_URLPW_LB.SB_PART_14-30.rar/87kk_URLPW_LB.SB_PART_14-30.txt [Part 200 of 1582]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 58, "systemid": "99675122-cf51-428a-9840-90a384225178", "data_type": "Documento"}, {"date": "2024-11-15T14:06:38.85913Z", "name": "42kk_URLPW_BY_LB.SB_PART_6-30.txt [Part 562 of 668]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 58, "systemid": "d08f8883-2bd3-4ae3-8e19-3bdca4188b78", "data_type": "Documento"}, {"date": "2024-02-01T08:22:15.804616Z", "name": "Part (2).rar/Part (2).txt [Part 465 of 489]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 58, "systemid": "6a1b5098-6758-4379-a2a4-84a40c92d463", "data_type": "Documento"}, {"date": "2023-11-26T08:24:49.302792Z", "name": "148GB (13).txt [Part 4 of 170]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 58, "systemid": "db36d7a7-bbce-427d-9f46-6942c7745579", "data_type": "Documento"}, {"date": "2023-11-10T14:46:15.277846Z", "name": "ID_2023_08_11_17_57_71cbyd.rar/_AllForms_list.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 58, "systemid": "a62dbc27-61f9-4132-b611-443398fac2b2", "data_type": "Documento"}, {"date": "2021-10-13T04:37:49.323811Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 98 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 58, "systemid": "b5825898-c3b3-4aef-a744-7593cfdca68e", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:47.93581Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 94 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 58, "systemid": "62ab420f-3a71-43ac-9c99-96843ab7176a", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:34.839884Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 62 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 58, "systemid": "183bc82f-3443-4aed-842d-1e52ba0b3a3c", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:32.231359Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 57 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 58, "systemid": "b323b56a-269d-43a2-b8f1-97b41dac538f", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:15.409764Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 25 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 58, "systemid": "715ef59f-8643-416b-aab7-48a913796fe9", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:14.804797Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 23 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 58, "systemid": "194ee880-94e7-492c-9942-49f6724c509d", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:08.576133Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 6 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 58, "systemid": "b13a2f64-a201-4e52-bc3b-49c18c06b449", "data_type": "C\u00f3digo"}, {"date": "2021-03-26T19:40:18.101376Z", "name": "rDNS_zones_data_full_1.csv [Part 34 of 1025]", "bucket": "leaks.public.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 58, "systemid": "2c55c511-94c3-4416-b298-b021b17f3822", "data_type": "Otro"}, {"date": "2025-01-25T21:03:30.356751Z", "name": "[MA][MetaMask]196.70.221.96.rar/Important Files/Desktop/ibda3/url/output.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 57, "systemid": "79a3d253-f299-4e83-992c-d51c5985bf65", "data_type": "IP"}, {"date": "2025-01-24T16:38:29.186915Z", "name": "78kk_URLPW_LB.SB_Part_12-30.rar/78kk_URLPW_LB.SB_Part_12-30.txt [Part 771 of 1278]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 57, "systemid": "f907a651-c004-4526-81bd-d70cc3e39daf", "data_type": "Documento"}, {"date": "2024-11-15T14:10:15.81468Z", "name": "54kk_urlpw_9-30 (1).rar/54kk.txt [Part 655 of 988]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 57, "systemid": "cb7afe05-309d-42ef-8720-68a2f5727761", "data_type": "Documento"}, {"date": "2024-09-23T04:41:35.889082Z", "name": "[AR]200.41.183.233.rar/Chrome/Default/History.txt [Part 1 of 2]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 57, "systemid": "f7c76f69-0aeb-4a7d-8482-916e05bf19e1", "data_type": "IP"}, {"date": "2024-06-25T14:14:42.354921Z", "name": "@ScorpionLogs [ULP] PUBLIC#2.txt [Part 45 of 97]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 57, "systemid": "4fd4f739-c429-458b-9b2a-a1bdbdf3880c", "data_type": "Email"}, {"date": "2024-02-01T08:17:43.42766Z", "name": "Part (2).rar/Part (2).txt [Part 10 of 489]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 57, "systemid": "29a90dbd-9e23-467c-a89c-9fb967b2a4f9", "data_type": "Documento"}, {"date": "2021-10-13T04:37:59.145655Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 120 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "da920dc0-4177-44cb-ad10-28f32adda5fc", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:37.255345Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 68 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "766b5e3c-a5f3-43a3-ac2b-d1b4cd64aa79", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:36.47572Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 67 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "639be242-f630-42e1-8d48-dfd12e07187d", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:35.010208Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 63 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "4dfcdbb4-6650-41db-985d-9abb551fa850", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:34.2602Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 61 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "8ec72f3e-d097-472a-86e1-06d7092a0f36", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:32.997116Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 60 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "2e3ce74b-cafe-443e-9ecc-0fc0c48eab87", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:32.802066Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 59 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "bb7a818d-ad2a-42ed-993d-b596d3a64865", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:32.556833Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 58 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "c5d470c6-ca6c-4591-9e5c-ea7de712b9a8", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:21.607429Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 39 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "fe85f1b9-902c-4902-b829-a54caa84744e", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:15.851507Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 26 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "d4424619-97aa-4723-9e48-2bc6b7c5b3e9", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:13.993965Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 20 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "ab7240d7-dcd5-4789-b80c-9160becb290a", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:13.841945Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 19 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "4b8331fe-bf05-4a15-8b7f-6416c3f46089", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:11.726975Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 16 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "1aae39c0-bd65-434f-a711-fa60154bf5e9", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:11.134613Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 15 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "1a0556be-4957-41e1-8dc4-090ba6bd4134", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:10.733217Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 14 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "40f3a559-380d-4f80-8581-d7cc9f426892", "data_type": "C\u00f3digo"}, {"date": "2021-10-13T04:37:08.110605Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 5 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "412d7bef-5769-496a-9710-11bf8d54f36b", "data_type": "C\u00f3digo"}, {"date": "2021-10-12T23:27:17.648069Z", "name": "supbienestar.gob.ar_2017.07.17.rar/supbienestar.gob.ar.sql [Part 1 of 120]", "bucket": "leaks.private.general", "type": 1, "media": 27, "media_label": "Source Code", "xscore": 57, "systemid": "9e1995a9-5e38-48e1-b094-82d25b49c694", "data_type": "C\u00f3digo"}, {"date": "2025-01-26T06:11:17.113606Z", "name": "57m_URLPW_BY_LB.SB_PART_24-30.rar/57m_URLPW_BY_LB.SB_PART_24-30.txt [Part 229 of 992]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 56, "systemid": "8e3a0dee-33bb-4a80-878a-1b278c9ac0b9", "data_type": "Documento"}, {"date": "2025-01-24T16:38:34.500652Z", "name": "78kk_URLPW_LB.SB_Part_12-30.rar/78kk_URLPW_LB.SB_Part_12-30.txt [Part 876 of 1278]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 56, "systemid": "0bcf4c03-4f5b-4586-9cf3-e3b6e2b3b0f7", "data_type": "Documento"}, {"date": "2025-01-24T16:32:24.832008Z", "name": "57KK_URLPW_LB.SB_PART_12-30.rar/URLPW_LB.SB_PART_12-30.txt [Part 369 of 1042]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 56, "systemid": "17ad6fc9-b06f-4a8e-8037-442c77526ceb", "data_type": "Documento"}, {"date": "2023-11-26T22:55:01.628472Z", "name": "148GB (15).txt [Part 120 of 168]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 56, "systemid": "884a5e10-94c4-4441-a9db-fb4d3f7dc14a", "data_type": "Documento"}, {"date": "2023-11-26T08:29:43.246955Z", "name": "148GB (14).txt [Part 126 of 170]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 56, "systemid": "ae9241db-815d-4365-8853-43661aacdcd1", "data_type": "Documento"}, {"date": "2021-04-14T05:39:04.238056Z", "name": "mx records 361M.rar/fdns_mx_5.txt [Part 51 of 513]", "bucket": "leaks.public.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 56, "systemid": "d8f89eb4-9fd9-41c0-bea9-3c0690cb1535", "data_type": "Documento"}, {"date": "2024-11-03T09:27:01.097198Z", "name": "18m_URLPW_LB.SB_Part_2-30.txt [Part 311 of 365]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 55, "systemid": "995f7dc8-de6f-48b2-88e9-f1fc8a828730", "data_type": "Documento"}, {"date": "2024-02-01T08:21:36.984479Z", "name": "Part (2).rar/Part (2).txt [Part 302 of 489]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 55, "systemid": "2a8cb491-5e9f-49e4-9e1d-c8002a84cfe4", "data_type": "Documento"}, {"date": "2025-08-26T13:59:51.452935Z", "name": "YutaUlp.part.002.txt [Part 5 of 126]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 53, "systemid": "9ad0e3c0-e579-4433-bade-fd343daa7cbf", "data_type": "Documento"}, {"date": "2025-08-25T16:55:34.339311Z", "name": "@KURTXT_ULP_NEW_210_MILLION_URL_LOGIN_PASS_LIVE_TRAFFIC_08_02_2025.txt [Part 653 of 816]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 53, "systemid": "ac55096d-1617-4285-b703-7a9cba5ee645", "data_type": "Email"}, {"date": "2025-08-19T22:03:16.007306Z", "name": "[AR]186.13.112.93.rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 53, "systemid": "c68f8311-dfcd-4419-821d-b201fc97e3f5", "data_type": "IP"}, {"date": "2021-11-26T01:41:23.555214Z", "name": "de39603a-ee74-49b0-a447-f40b42eea4bd.rar/de39603a-ee74-49b0-a447-f40b42eea4bd/de39603a-ee74-49b0-a447-f40b42eea4bd/Files/100000.txt [Part 3 of 4]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 53, "systemid": "adba2276-2cf4-4930-9bf5-1d7f128dabfa", "data_type": "Documento"}, {"date": "2025-09-04T10:28:31.109676Z", "name": "HUNTER ULP 02.09.2025 Base34 1_part_0002.txt [Part 41 of 273]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "eaf50878-6de8-42ac-8ef6-bbf040bfd4cc", "data_type": "Documento"}, {"date": "2025-09-04T09:56:54.112861Z", "name": "@InfernoUrl [PRIVATE 93]/@InfernoUrl part(6).txt [Part 84 of 325]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "11df496a-b521-45aa-87b5-4941ef747653", "data_type": "Email"}, {"date": "2025-08-25T17:09:03.346925Z", "name": "@UP_KURZLOGS NEW ULP PRIVATE [LIVE-TRAFFIC] BONUS 17-08-2025.txt [Part 621 of 892]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "9b452bfe-1925-4ab1-b97d-4b6ad2f53cca", "data_type": "Email"}, {"date": "2025-04-10T14:30:51.233327Z", "name": "@RATCLOUDS 90.1M VIP ULP.txt [Part 483 of 1429]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "f92ecd9f-b421-463c-9e42-896e3e3ab519", "data_type": "Email"}, {"date": "2025-03-26T19:25:47.486784Z", "name": "[AR]190.189.214.180[pakipaki].rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "64fc0f06-6427-423f-b7ba-d475f6f6e69c", "data_type": "IP"}, {"date": "2025-03-07T06:11:51.149457Z", "name": "[AR]BotLogs15465 (286).rar/Chrome/Profile 3/History.txt [Part 3 of 5]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "2c828d8a-230e-4572-bd52-5e7c81c28acc", "data_type": "Documento"}, {"date": "2025-01-13T21:47:44.66315Z", "name": "[AR]186.129.106.0.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "689f49f7-a73e-41be-99e8-4e409e96133e", "data_type": "IP"}, {"date": "2024-11-08T18:45:13.663158Z", "name": "[729 friends] [business false] [AR] [1177725518].rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "ee2021a4-3657-4a12-99aa-57c7e8d2d128", "data_type": "Documento"}, {"date": "2024-09-05T10:02:31.184605Z", "name": "[AR]181 (7).170.rar/Mozilla Firefox/cz8v3g6p.default-release/History.txt [Part 2 of 2]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "2b8b82cf-efed-4afc-a896-bc466d4539df", "data_type": "Documento"}, {"date": "2024-03-01T09:21:54.241353Z", "name": "[AR][MetaMask]190.245.182.64[15.01 00 55 56].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 52, "systemid": "9736252a-9da3-41e8-818d-d469a4d24d18", "data_type": "IP"}, {"date": "2025-09-04T10:26:41.114985Z", "name": "HUNTER ULP  PVT BY @SKYLORDS69 02-09-2025_part_0008.txt [Part 574 of 653]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "a5612c09-43e2-488a-af6a-657dee0934a0", "data_type": "Email"}, {"date": "2025-08-25T19:23:22.235171Z", "name": "LegionLeakers-2025_07_20_17.txt [Part 10 of 71]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "caa0f407-9389-4051-9e8d-ac0c51f487ee", "data_type": "Documento"}, {"date": "2025-07-14T22:06:29.134279Z", "name": "@KURTXT_ULP FRESH LINES 120 MILLION 11-07-2025.txt [Part 418 of 457]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "c69914f2-5f3c-4858-8ef1-a33b2833db7e", "data_type": "Email"}, {"date": "2025-04-18T07:37:14.321516Z", "name": "AR[92C589AB9578BE4C0ADF174CB00A672F92C589A][18-03-2025-07_09_07].rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "32b3228e-ceaa-4356-b58a-b0a2a48faf72", "data_type": "Documento"}, {"date": "2025-04-10T14:30:51.113799Z", "name": "@RATCLOUDS 90.1M VIP ULP.txt [Part 479 of 1429]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "85ccb92f-4b85-4f1e-a057-485c000b81dc", "data_type": "Email"}, {"date": "2025-02-27T06:19:35.229196Z", "name": "@TXTLOG_ALIEN - 210.txt [Part 128 of 989]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "9bb974cf-d440-41e3-abcd-b715e1846060", "data_type": "Email"}, {"date": "2025-01-02T04:26:19.669849Z", "name": "list/list233.txt [Part 166 of 257]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "7e600c43-e000-4a03-8247-4e256207bc2a", "data_type": "Documento"}, {"date": "2023-10-31T21:55:18.041228Z", "name": "AR_190.221.151.58_29-11-22_553712.rar/History/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "c398b401-8329-40f3-84f4-0bd703d832c0", "data_type": "Documento"}, {"date": "2023-09-30T08:50:27.395767Z", "name": "4_7_15000000.txt [Part 77 of 249]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "b2fc9662-64e9-4c59-96ab-c00e9280ac54", "data_type": "Documento"}, {"date": "2022-06-29T11:18:01.032792Z", "name": "AR[DBD24C7C2FEDD7D1536B2F9CE044A724] [2022-05-18T01_42_56.1803363].rar/Cookies/Google_[Chrome]_Default Network.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 51, "systemid": "fb714617-3aec-4a07-9922-23d2fe50b752", "data_type": "Documento"}, {"date": "2025-05-26T19:45:25.853424Z", "name": "20995_AR_181.167.105.242.rar/passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "f1a2ce14-9e58-444c-8e62-6475356416a1", "data_type": "Documento"}, {"date": "2025-05-01T06:12:13.385549Z", "name": "64m_URLPW.txt [Part 866 of 1034]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "64de6774-dd6e-49b3-a916-42a613346f5f", "data_type": "Documento"}, {"date": "2025-03-13T21:57:19.15528Z", "name": "[AR]190.189.214.180.rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "5c83e2a2-096b-4916-ba77-de8256388c2d", "data_type": "IP"}, {"date": "2025-03-09T21:59:45.993086Z", "name": "URL_LOGIN_PASS_-_24_02_25__1.txt [Part 146 of 268]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "b73987e7-52bd-401a-b96d-5142af2b46e5", "data_type": "Documento"}, {"date": "2025-02-07T12:03:07.161926Z", "name": "domains-detailed_20250207/domains-detailed_20250207_1.csv [Part 29 of 257]", "bucket": "dns", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 50, "systemid": "71196ba9-630b-40fd-bf0b-14a555138914", "data_type": "Otro"}, {"date": "2025-01-14T19:07:59.974351Z", "name": "MOSCOW/MOSCOW114.csv [Part 156 of 257]", "bucket": "leaks.private.general", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 50, "systemid": "bbb66917-a2f8-4169-a1d4-bd7d8725f48a", "data_type": "Otro"}, {"date": "2024-10-11T13:21:40.351441Z", "name": "[AR][MetaMask,Authenticator]200.105.56.133.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "5431b050-db77-403c-aa4d-22e4ffa8ee57", "data_type": "IP"}, {"date": "2024-09-18T14:28:40.669774Z", "name": "[US]174.17.10.110.rar/Chrome/Default/Cookies.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "b453d37c-467e-4e89-9409-a066aa2069aa", "data_type": "IP"}, {"date": "2024-09-07T12:21:15.646011Z", "name": "[AR]190.195.211.75.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "a2eb9ed4-e943-4b32-a01b-dbbe33b8c44b", "data_type": "IP"}, {"date": "2024-09-05T10:19:52.265697Z", "name": "[AR]200.45.28.94.rar/Mozilla Firefox/pyl1xpgg.default-release/Passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "670ad7e5-628e-42f3-898b-b6dde94cbc16", "data_type": "IP"}, {"date": "2024-09-05T10:12:28.911039Z", "name": "[AR]186.129.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "c874dfc5-b5a4-4564-a4da-ef84a68b7393", "data_type": "Documento"}, {"date": "2024-09-01T11:39:33.611188Z", "name": "AR3C80118DDFA2177C0F0CD27C4776FFCF_2022_11_08T09_47_53_872556.rar/Cookies/Google_[Chrome]_Profile 4 Network.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "3a0c2ca9-ce78-4791-a4bd-f63311cd366f", "data_type": "Documento"}, {"date": "2024-08-28T19:49:18Z", "name": "AR[54D91DDF754E3F2EDA59617965C167B054D91DD]17-08-2024-19_05_02].zip/Mozilla Firefox/pyl1xpgg.default-release/Passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "2a2c7676-eea7-458c-aea1-584e465ec5ef", "data_type": "Documento"}, {"date": "2024-07-29T01:26:13.448202Z", "name": "5F8E1D92-0F8F-11E7-B753-FC459690963F.rar/Browsers/Historys.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "7dac8dab-5b55-43b3-87c3-d5c2cad1101b", "data_type": "Documento"}, {"date": "2024-06-05T14:51:40.122308Z", "name": "AR_181.167.105.242.rar/passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "829e867e-d708-41c8-b30b-35069f473872", "data_type": "Documento"}, {"date": "2024-05-17T08:45:51.165276Z", "name": "AR[10F62A036E4C84F75D47B7BDF427C83F]23-02-2024-11_38_26].rar/Autofill/Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "e3d04375-e30d-4827-8a68-d5cd620ba0c0", "data_type": "Documento"}, {"date": "2024-05-14T19:16:14.168892Z", "name": "AR[3CAB14B58F699910D804B9D8DF5771AF]17-03-2024-20_58_50].rar/passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "f3e97876-8947-46d4-804c-fe1f49136194", "data_type": "Documento"}, {"date": "2024-05-04T18:56:39.358824Z", "name": "AR4RTU8D0VCAY9YSCOMUKMUNVCU9PZZA5_2024_04_07T14_11_65_483682.rar/History/Firefox_50uthz7d.default-release.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "dfd0617b-5df3-4992-8088-8e54eea700e2", "data_type": "Documento"}, {"date": "2024-04-15T23:07:02.472442Z", "name": "BR_191.162.166.135_2023-01-12T22_57_20.188Z.rar/browsers/cookies/Chrome_108.0.5359.125-64_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "5f2b9061-cee6-4068-8123-328399ea7fb8", "data_type": "Documento"}, {"date": "2024-04-15T20:29:31.345966Z", "name": "APB_Cloud_U-L-P55.rar/APB_Cloud_U-L-P55.txt [Part 1131 of 1708]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "ea1f3483-9cf7-46a2-b588-4dd891e19f93", "data_type": "Documento"}, {"date": "2024-04-15T11:36:44.692208Z", "name": "185 000 000 url.rar/@logstoop.txt [Part 2848 of 3713]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "883aa5d3-fc9b-4245-a61b-321e3a882fb4", "data_type": "Email"}, {"date": "2024-03-23T19:19:46.175828Z", "name": "[AR][UniSat]190.244.63.154.rar/Opera GX Stable/Opera GX Stable/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "b9b28d0d-2b6a-48f8-9f37-3867d5e25847", "data_type": "IP"}, {"date": "2024-03-23T08:33:17.07574Z", "name": "[AR][UniSat]190.244.63.154[15.12 13 32 12].rar/Opera GX Stable/Opera GX Stable/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "60c15c65-27e1-40fe-ac86-4042aea699fd", "data_type": "IP"}, {"date": "2024-03-03T19:17:36.264851Z", "name": "[AR]181.47.115.241.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "da9c2e18-b53c-4150-886c-124d0c072cce", "data_type": "IP"}, {"date": "2024-01-28T12:53:27.235361Z", "name": "[ID]158.140.175.194.rar/Chrome/Default/Autofills.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "bbe88ddf-5a7c-42e3-ae1f-45fe23b26bf6", "data_type": "IP"}, {"date": "2024-01-28T08:03:01.056394Z", "name": "[AR]45.226.224.24.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "b54eb523-ec12-4902-be58-0d6a9eeed389", "data_type": "IP"}, {"date": "2024-01-20T18:20:13.449372Z", "name": "AR[IROTX9TOFGMACGNGAMY3UAOQLVXCO6QXK8N].rar/Cookies/Google_[Chrome]_Default Network.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "bb5c3c29-50fa-4601-a92f-f0c57f071a55", "data_type": "Documento"}, {"date": "2023-11-26T23:04:50.603505Z", "name": "148GB (202).txt [Part 133 of 184]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "27a274f0-e27f-45a8-9f6d-2bfb5dc8ec03", "data_type": "Documento"}, {"date": "2023-08-22T06:16:15.343646Z", "name": "Botlogs 20230821.001 (4853).rar/Cookies/Google_[Chrome]_Default Network.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "700e416a-8892-49d0-a203-96f10d58307e", "data_type": "Documento"}, {"date": "2023-06-07T20:15:41.608281Z", "name": "AR_201.176.24.89_2023-04-12T14_18_22.994Z.rar/files/pdf/Laboratorio N\u00ba 1559255 mami.pdf", "bucket": "leaks.logs", "type": 5, "media": 15, "media_label": "PDF Document", "xscore": 50, "systemid": "0e1a17db-beb6-4049-9258-29ae9d8aa75d", "data_type": "Documento"}, {"date": "2023-05-12T04:28:13.484025Z", "name": "AR[0D4C38250252A3F2BD75C3F9DBDF48E35] [2023-04-15].rar/Cookies/Google_[Chrome]_Default Network.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "8904f7f2-6fc8-4f40-b259-f63cc2a001eb", "data_type": "Documento"}, {"date": "2023-05-12T04:05:31.708126Z", "name": "AR30621346722F95A1F341A30267CA3F223 [2023-04-13].rar/Cookies/Google_[Chrome]_Default Network.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "80cc4aaf-90ff-4ba7-bce6-d4a87ba63d8c", "data_type": "Documento"}, {"date": "2023-05-07T08:25:41.848438Z", "name": "MY[AE49A1DC4CB9297F4CE3AD1EA9707614][2023-03-24T01_52_41.2932491-07_00].rar/Cookies/Google_[Chrome]_Default Network.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "b20b8e84-3f64-4314-b842-6a8fca3d0acb", "data_type": "Documento"}, {"date": "2022-12-24T02:38:54.138512Z", "name": "AR[ED3A80D73DE270676EC339E6F76C79AF][2022-11-11T07_50_50.rar/FileGrabber/Users/Marcelo/Documents/Superintendencia de Bienestar.docx", "bucket": "leaks.logs", "type": 5, "media": 16, "media_label": "Word Document", "xscore": 50, "systemid": "143431e3-2a3b-4f10-8fb0-9630f1cd5f13", "data_type": "Documento"}, {"date": "2022-12-21T16:10:39.486152Z", "name": "AR_186.18.168.22_2022-11-28T11_21_00.960Z.rar/passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "ede83edc-4874-4a6c-b6c9-9c646ed6cd4a", "data_type": "Documento"}, {"date": "2022-12-21T16:10:39.44009Z", "name": "AR_186.18.168.22_2022-11-28T11_21_00.960Z.rar/browsers/autofills/Chrome_107.0.5304.107-64_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "d2c1b0a6-61c4-4ab2-8571-b5a73dd83802", "data_type": "Documento"}, {"date": "2022-12-02T21:31:56Z", "name": "60437_AR_181.46.165.196_03-12-22.rar/Files/Default.zip/Doc/Doc cel/Recetas DBT.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "0588a940-a92c-4603-9e34-f0705010d610", "data_type": "Documento"}, {"date": "2022-05-17T01:52:27.156108Z", "name": "AR[52ED3A2A6F6A0019F5C488572EFF360F] [2022-03-07T11_09_11.36.rar/Cookies/Google_[Chrome]_Default Network.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "dd522055-6dee-4469-b627-275776ee1fc7", "data_type": "Documento"}, {"date": "2021-11-07T03:59:04.096291Z", "name": "AR-2019-04-29 00-02-38359CF622-343A2EC6-3081C948-49E403E3-9BD79A6E-v33.rar/AR-2019-04-29 00-02-38359CF622-343A2EC6-3081C948-49E403E3-9BD79A6E-v33/CookieList.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "a92eb568-47d1-4de5-8744-6e5a75675357", "data_type": "Documento"}, {"date": "2021-11-07T03:59:03.955516Z", "name": "AR-2019-04-29 00-02-38359CF622-343A2EC6-3081C948-49E403E3-9BD79A6E-v33.rar/AR-2019-04-29 00-02-38359CF622-343A2EC6-3081C948-49E403E3-9BD79A6E-v33/Browsers/Cookies/InternetExplorerLow.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "25bbf9e1-e4da-40f5-b6a4-043395961af5", "data_type": "Documento"}, {"date": "2021-11-03T06:05:09.761386Z", "name": "all-zones_data_full.txt [Part 6 of 1465]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "8e898b2e-7dfe-4f05-9fb1-b64cc6b33edb", "data_type": "Documento"}, {"date": "2020-01-09T15:45:08Z", "name": "9-10.01.2019 12k/10_archive_1000_logs_72098-73560_f3cd59043e/72399_AR_181.46.123.54_09-01-20.zip/cookie_list.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 50, "systemid": "5ef3a3a2-9ad4-4727-af15-16d1560c56f4", "data_type": "Documento"}, {"date": "2025-09-04T10:41:13.17228Z", "name": "ULP 90.1KK.txt [Part 491 of 669]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "60cf6858-d896-4fe4-8174-e1aeaec77dbb", "data_type": "Documento"}, {"date": "2025-09-04T09:57:09.664844Z", "name": "@InfernoUrl [PRIVATE 93]/@InfernoUrl part(6).txt [Part 284 of 325]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "ed59f376-4ad1-4223-8e6b-5a0bfbb49a7d", "data_type": "Email"}, {"date": "2025-08-29T14:34:33.437348Z", "name": "[AR][MetaMask]190.49.61.187[labs].rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "8dc88bd2-0c5c-4c50-9934-d450ba980481", "data_type": "IP"}, {"date": "2025-06-19T13:12:36.886722Z", "name": "UN[A9C4E19147E878980328055C1786DED2][09-06-2025-00_48_34].rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "48be4eaf-ff95-4d1e-af62-dc462658bb6a", "data_type": "Documento"}, {"date": "2025-06-08T21:48:04Z", "name": "[AR]181.171.17.108[uniquemoney].zip/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "d0c1fe80-5441-4428-892e-61e35750baff", "data_type": "IP"}, {"date": "2025-05-27T14:55:43.503467Z", "name": "AR[OT8QNIYGS770Q3DI9H8M45UDEXWX91SCXTQFRSXW2TO][2025-05-14_19-09-48].rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "37fe7cfb-33c7-4335-9aa7-34e59ece1b6b", "data_type": "Documento"}, {"date": "2025-05-27T04:02:19.29819Z", "name": "[AR][MetaMask]190.49.61 (2).187[labs].rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "0b7c44e0-0824-43c8-a17e-9972f79a6dc5", "data_type": "Documento"}, {"date": "2025-01-02T04:24:08.919763Z", "name": "list/list220.txt [Part 55 of 257]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "ebaedfa0-631c-4436-80a2-22e6107aa999", "data_type": "Documento"}, {"date": "2024-10-11T13:21:40.398208Z", "name": "[AR][MetaMask,Authenticator]200.105.56.133.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "c72ef26c-83bc-42e4-86a9-94861de08726", "data_type": "IP"}, {"date": "2024-09-05T10:19:52.235864Z", "name": "[AR]200.45.28.94.rar/Edge/Default/Passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "7e7b4ecb-a415-440c-8df2-4a554e2b3a98", "data_type": "IP"}, {"date": "2024-09-05T10:19:52.049245Z", "name": "[AR]200.45.28.94.rar/All Passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "85a8e4c6-112e-4f07-9672-97817410d563", "data_type": "IP"}, {"date": "2024-08-28T19:49:18Z", "name": "AR[54D91DDF754E3F2EDA59617965C167B054D91DD]17-08-2024-19_05_02].zip/Edge/Default/Passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "b2910f75-4344-46a4-aaa6-f556fcaf03bb", "data_type": "Documento"}, {"date": "2024-05-09T13:53:37.201422Z", "name": "[AR]201.216.219.202.rar/Mozilla Firefox/op71xjm9.default-release/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "f0213a8f-0344-40c1-8d6e-bee940435e31", "data_type": "IP"}, {"date": "2024-04-16T11:28:49.471274Z", "name": "APB_Cloud_U-L-P___15.rar/APB_Cloud_U-L-P___15.txt [Part 263 of 1492]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "f001a698-6b7f-43d3-9aa4-6e28ddad827c", "data_type": "Documento"}, {"date": "2024-03-31T07:49:47.525373Z", "name": "20995_AR_181.167.105.242.rar/passwords.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "faf18b68-fd59-4cbb-833b-009bbccda78d", "data_type": "Documento"}, {"date": "2023-11-27T11:20:56.339458Z", "name": "logs20231127/logs20231127_2.txt [Part 1312 of 1537]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "bf1d2014-707e-42ea-93a4-0381d7acb568", "data_type": "Documento"}, {"date": "2023-11-01T18:23:39.105176Z", "name": "1\u007f\u007f\u007f (63).txt [Part 523 of 976]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "cf750ca4-60c8-474d-9608-91e2774d67e1", "data_type": "Documento"}, {"date": "2023-09-30T08:50:47.754615Z", "name": "4_8_15000000.txt [Part 46 of 254]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 49, "systemid": "fbac606e-bd7b-4870-a401-f7d906faf627", "data_type": "Documento"}, {"date": "2025-09-04T10:29:43.547195Z", "name": "HUNTER ULP 02.09.2025 Base34 1_part_0004.txt [Part 127 of 273]", "bucket": "leaks.private.general", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "5280466a-7ebb-4532-bd9c-d033793d8d4f", "data_type": "Documento"}, {"date": "2025-06-19T13:41:18.310579Z", "name": "UN[C9CAB70379D8AD728E5AD22227225E2D][07-06-2025-05_41_29].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "ac1b7d8b-a3e8-40d1-94d5-37e18f06ba52", "data_type": "Documento"}, {"date": "2025-06-07T02:41:08Z", "name": "[AR]181.46.68.192[vasyaeu].zip/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "3c7e6da1-0eea-4857-af76-ad5f6005b8db", "data_type": "IP"}, {"date": "2025-04-07T19:47:39.291847Z", "name": "[AR]181.80.210.9.rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "cad62120-b5b9-4745-9a9b-47145852a601", "data_type": "IP"}, {"date": "2025-02-06T19:48:43.614042Z", "name": "[AR]45.70.90_.38[Main].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "f48b907a-73f0-486f-8385-76f6af45b901", "data_type": "Documento"}, {"date": "2025-02-06T19:48:26.311927Z", "name": "[AR]190.55.230_.235[october].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "b3bdaf6a-667e-4cdd-bcc1-3b70040eb51a", "data_type": "Documento"}, {"date": "2025-02-06T19:48:24.260292Z", "name": "[AR]190.245.168_.241.rar/Edge/Default/History.txt [Part 1 of 2]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "df8bad96-2acc-4258-9b36-041a106b5da6", "data_type": "Documento"}, {"date": "2025-02-06T19:48:24.065831Z", "name": "[AR]190.245.168_.241.rar/Chrome/Default/History.txt [Part 1 of 2]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "cf4c7393-01a4-4067-b1d0-e55e51ca323b", "data_type": "Documento"}, {"date": "2025-02-02T03:56:51.498151Z", "name": "AR[398B5E799578BE4C0ADF174CB00A672F398B5E7][09-12-2024-09_24_25].rar/Edge/Default/History.txt [Part 1 of 2]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "cd077291-5b04-488a-afe7-bb191a6cc2a0", "data_type": "Documento"}, {"date": "2025-02-02T03:56:51.301196Z", "name": "AR[398B5E799578BE4C0ADF174CB00A672F398B5E7][09-12-2024-09_24_25].rar/Chrome/Default/History.txt [Part 1 of 2]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "cf130ec6-83b6-4fd8-b89a-fb7b0d7220f0", "data_type": "Documento"}, {"date": "2025-01-13T21:47:25.837484Z", "name": "[AR]181.46.68.9.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "62d0148b-109a-4d91-a01f-52f8bbc59806", "data_type": "IP"}, {"date": "2025-01-09T19:03:48.181245Z", "name": "[AR]_bot (691).rar/Chrome/Profile 3/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "94acfd0b-d820-4549-aebd-115e9f2211c5", "data_type": "Documento"}, {"date": "2024-12-10T10:34:50.425303Z", "name": "[AR]45.70.90.38.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "2342a7e4-545c-43a5-897a-ace61cb74bc9", "data_type": "IP"}, {"date": "2024-12-10T10:33:44.726524Z", "name": "[AR]190.55.230.235 (3).rar/[AR]190.55.230.235/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "0906e61e-91bf-47f3-b191-734a391ba0b6", "data_type": "IP"}, {"date": "2024-12-10T10:33:44.691692Z", "name": "[AR]190.55.230.235 (2).rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "82b84e8c-1870-44b0-9163-2ed861972b2a", "data_type": "IP"}, {"date": "2024-12-10T10:32:15.252267Z", "name": "[AR]181.171.240.121.rar/Chrome/Profile 3/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "a8373fc2-d07f-4361-9d3f-3d632fb544e1", "data_type": "IP"}, {"date": "2024-10-20T16:04:07.97725Z", "name": "AR[2366179BB469FD9C836D7512DC7147ED2366179]02-09-2024-00_52_30].rar/Mozilla Firefox/cqacrhiv.default-release/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "dbdd45a4-3c22-4540-8fe0-05a0b94ca6a0", "data_type": "Documento"}, {"date": "2024-10-02T19:02:56.356358Z", "name": "[AR]186.0.244.2.rar/Edge/Default/History.txt [Part 1 of 2]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "b88b03e6-1cfd-4293-b0c6-27734bd83e5b", "data_type": "IP"}, {"date": "2024-09-26T17:26:26.550548Z", "name": "[AR]181.166.15.28.rar/Mozilla Firefox/14ed3cs6.default-release/History.txt [Part 1 of 2]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "53705a22-ffdf-484d-8c60-18bc48a2259c", "data_type": "IP"}, {"date": "2024-09-23T05:46:22.051537Z", "name": "[BR]177.82.199.216.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "c13c2dcc-4be1-4147-a4ba-4b62aace0f78", "data_type": "IP"}, {"date": "2024-09-23T05:46:21.970735Z", "name": "[BR]177.82.199.216.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "7e387053-b933-4001-a915-421ab7f9aa3c", "data_type": "IP"}, {"date": "2024-09-16T05:01:29.582575Z", "name": "[AR]186.128.226.179.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "68ccf78c-e1e7-4be5-81c4-2fe875958ddd", "data_type": "IP"}, {"date": "2024-09-16T04:56:52.29137Z", "name": "[AR]181.171.145.208.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "ac0c4d30-07a5-4153-83a3-95a1fa9d8dcf", "data_type": "IP"}, {"date": "2024-09-05T10:02:32.922115Z", "name": "[AR]181 (74).46.rar/Chrome/Profile 3/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "0fc712e1-e179-4706-9ac8-9e703f95ceb8", "data_type": "Documento"}, {"date": "2024-03-23T08:29:24.353084Z", "name": "[AR]181.20.209.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "f38b0513-f08c-4e31-b7f7-4a82bf8eb362", "data_type": "Documento"}, {"date": "2021-11-07T06:27:37.018912Z", "name": "AR-2019-06-01 02-35-32B9FCBF3B-86C3DFC7-323B1B43-B9D7220B-83146D0E-v33.rar/Browsers/History/Opera_Opera Stable.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "07390131-ef28-40d2-b6b1-bab7876bd126", "data_type": "Documento"}, {"date": "2021-11-07T06:05:43.382784Z", "name": "AR-2020-01-24 00-26-48146E4F0A-9414907A-3ED41304-9F8883D4-DA8F02E7-v33.rar/Browsers/History/GoogleChrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 48, "systemid": "8bda54b0-8308-4df7-b874-e463aa6ff672", "data_type": "Documento"}, {"date": "2025-09-05T13:37:37.97234Z", "name": "AR[7800F52756D1933674505C227B122D5C][20-08-2025-21_49_57].rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "a2edbb0a-6376-4819-97fa-2a53ff250aa0", "data_type": "Documento"}, {"date": "2025-08-29T14:33:20.951896Z", "name": "[AR]179.38.201.155[stream].rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "4b16adb7-0dff-4954-8d6b-56ae8474b639", "data_type": "IP"}, {"date": "2025-08-11T19:54:35.101964Z", "name": "6f0d0dee91d1c8691de4a09d3b32df91-UKniA7a3.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "0b434be2-06ce-49ca-ba0d-a6f8082a548c", "data_type": "Documento"}, {"date": "2025-07-15T03:45:58.630048Z", "name": "AR[C1573358D3696BB7B9C9FD4CDB71E32F][19-05-2025-13_45_39].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "003553e9-1758-48da-b76e-db863767a5c0", "data_type": "Documento"}, {"date": "2025-07-10T11:36:22.84397Z", "name": "AR[FB2C08A4760E2F037628874878A44C03][22-06-2025-20_57_54].rar/Chrome/Profile 2/History.txt [Part 1 of 4]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "3ca7c183-2b19-407d-8111-f8781be98eff", "data_type": "Documento"}, {"date": "2025-07-02T07:06:59.226551Z", "name": "[AR][MetaMask]181.170.151.185[Main].rar/Chrome/Profile 2/History.txt [Part 1 of 4]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "53c28f19-cc26-40c2-9d82-83e60a9fb74d", "data_type": "IP"}, {"date": "2025-06-19T13:41:18.426378Z", "name": "UN[C9CAB70379D8AD728E5AD22227225E2D][07-06-2025-05_41_29].rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "929bea87-8b1f-4166-afff-d6ee8e02ec9d", "data_type": "Documento"}, {"date": "2025-06-07T02:41:18Z", "name": "[AR]181.46.68.192[vasyaeu].zip/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "e57a77eb-368d-4d9d-89d8-16953880f4c0", "data_type": "IP"}, {"date": "2025-04-18T07:36:25.912325Z", "name": "AR[3C49B0139F75A57E8C9A1C42E7B3F29E3C49B01][19-03-2025-01_04_48].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "6cf79b4d-6826-4f4a-bdd4-1367a906e1dc", "data_type": "Documento"}, {"date": "2025-04-18T07:36:25.829166Z", "name": "AR[3C49B01342C6D48F7D5C90AB82FBCE253C49B01][19-03-2025-01_13_34].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "11d23bfe-ece6-45cf-b338-0e8e802299f3", "data_type": "Documento"}, {"date": "2025-04-18T07:36:25.786011Z", "name": "AR[3C49B01342C6D48F7D5C90AB82FBCE253C49B01][19-03-2025-01_06_59].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "889cd04f-035d-4b82-bb9c-3fd12ee80dc1", "data_type": "Documento"}, {"date": "2025-04-15T07:25:02.056607Z", "name": "AR[F3C5BB1BCAC5B78DE03A59C653EE77A9F3C5BB1][09-04-2025-20_25_29].rar/Chrome/Profile 2/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "f3d3bdfb-e16f-4dc5-9cf9-119d3f544fa9", "data_type": "Documento"}, {"date": "2025-04-14T19:44:49.298834Z", "name": "[AR]190.189.137.105.rar/Chrome/Profile 2/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "f36202a5-bbe8-48a0-93d2-ac211b0cfc55", "data_type": "IP"}, {"date": "2025-04-07T19:48:10.136703Z", "name": "[AR]190.105.123.37[test].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "bdf3ee59-607e-4855-81e3-ee32456896f5", "data_type": "IP"}, {"date": "2025-04-07T19:48:10.092102Z", "name": "[AR]190.105.123.37[Main].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "463f0a2a-20db-44a1-881c-0a7ea175110a", "data_type": "IP"}, {"date": "2025-03-29T20:02:55.388324Z", "name": "[AR]190.105.123.37.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "ba66e5f1-aefb-4682-8971-07f2ae38c3b8", "data_type": "IP"}, {"date": "2025-03-26T19:42:13.445985Z", "name": "[AR]ipv67793d63015.rar/Opera GX Stable/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "71e356ee-f2c9-4bae-a91e-2a753f47f49f", "data_type": "Documento"}, {"date": "2025-03-26T19:25:47.560824Z", "name": "[AR]190.189.214.180[pakipaki].rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "f22d4907-5531-4182-8aa1-89cb3bfd3664", "data_type": "IP"}, {"date": "2025-03-26T19:00:50.494683Z", "name": "[AR]179.37.181.239.rar/[AR]179.37.181.239/Chrome/Profile 3/History.txt [Part 1 of 3]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "9e8dc7b0-9b9e-479f-b616-334441376a55", "data_type": "IP"}, {"date": "2025-03-20T20:22:25.681524Z", "name": "[AR]186.128.117.73.rar.rar/[AR]186.128.117.73.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "8e99d00a-aae7-4ce4-a2a6-2d02181f255a", "data_type": "IP"}, {"date": "2025-03-13T21:57:19.250179Z", "name": "[AR]190.189.214.180.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "5e851b70-b4f6-4461-95fb-22fc449e77ad", "data_type": "IP"}, {"date": "2025-03-13T21:53:21.433574Z", "name": "[AR]186.158.220.197.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "04d4e368-fdde-402a-aefd-ea13e84b2acd", "data_type": "IP"}, {"date": "2025-02-06T19:47:15.495019Z", "name": "[AR]179.37.181.239.rar/Chrome/Profile 3/History.txt [Part 1 of 3]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "af7b5069-e0f6-41c2-91b4-8d6e97037089", "data_type": "IP"}, {"date": "2025-01-22T07:34:32.586584Z", "name": "[AR]186.19.123.218.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "b9f395ce-8bfd-4bd0-96a4-5417c5ebd548", "data_type": "IP"}, {"date": "2025-01-22T07:34:12.873944Z", "name": "[AR]186.18.46.101.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "f7b67bca-3f1e-494d-89ed-f6e388986c9c", "data_type": "IP"}, {"date": "2025-01-09T19:03:34.773604Z", "name": "[AR]_bot (49).rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "76ea73d7-0286-4c84-95b6-a1d79251dc81", "data_type": "Documento"}, {"date": "2025-01-09T19:03:26.638624Z", "name": "[AR]_bot (37).rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "1de495b0-e4bb-45df-93e6-fd28c27643ef", "data_type": "Documento"}, {"date": "2025-01-09T19:03:26.377686Z", "name": "[AR]_bot (37).rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "483dc5e4-fea8-406b-92bd-db469c725b50", "data_type": "Documento"}, {"date": "2024-09-26T17:26:37.353075Z", "name": "[AR]181.46.253.53.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "ff029692-2379-46d5-8b48-0ab346cf0781", "data_type": "IP"}, {"date": "2024-09-16T05:01:29.80569Z", "name": "[AR]186.128.226.179.rar/Mozilla Firefox/s8cpedf5.default-release/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "f3fffcfe-86f9-4fc3-8f0e-712627af62d0", "data_type": "IP"}, {"date": "2024-09-07T12:21:13.674725Z", "name": "[AR]190.188.49.8.rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "868c50ef-4530-43ac-8cef-3dfdf5736ac2", "data_type": "IP"}, {"date": "2024-06-23T10:09:23.203503Z", "name": "[AR]p251 190.221.173.21.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "d80e494e-5ec0-4949-b39d-8dd2bbbdffaf", "data_type": "IP"}, {"date": "2024-03-23T19:18:30.399424Z", "name": "[AR]186.22.68.189.rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "eccd9bf6-130d-4364-80dd-23318d5f57a9", "data_type": "IP"}, {"date": "2024-03-13T15:25:39.233372Z", "name": "48487_AR_201.176.220.179.rar/History/Chrome_Profile 10.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "ab3dc3da-5916-4c85-b459-e63d025994f2", "data_type": "Documento"}, {"date": "2024-03-03T19:17:36.16913Z", "name": "[AR]181.47.115.241.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "d017021e-1be0-4050-9978-f61e66d8009b", "data_type": "IP"}, {"date": "2024-03-01T09:21:44.486423Z", "name": "[AR]186.132.214.33.rar/Chrome/Profile 1/History.txt [Part 4 of 5]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "d8dcd45f-cef0-40d0-a819-6952613aa6ea", "data_type": "IP"}, {"date": "2024-02-27T20:08:19.215836Z", "name": "AR_201.176.220.179.rar/History/Chrome_Profile 10.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "cfa37db8-f3fd-4ff5-8646-c4512e12fc56", "data_type": "Documento"}, {"date": "2024-01-28T08:04:33.781663Z", "name": "[AR]ipv6ef99fd9f5c.rar/Chrome/Profile 4/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "c1cbbdf9-210a-4472-9b29-51c86d1ca968", "data_type": "Documento"}, {"date": "2024-01-28T08:04:31.923483Z", "name": "[AR]ipv6d53f683057.rar/Chrome/Profile 4/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "fbae5e61-be58-4ad5-9426-fb8685c6a8fd", "data_type": "Documento"}, {"date": "2023-10-21T15:55:59.881101Z", "name": "[AR]ipv6c7e42b93b0.rar/Brave/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "a2360925-9a62-4910-ba94-9fafd5cc50fa", "data_type": "Documento"}, {"date": "2021-11-07T02:16:31.463527Z", "name": "AR-2020-01-18 04-00-4910C11558-E544B574-2BA69658-36EC39CD-9B8326C4-v33.rar/AR-2020-01-18 04-00-4910C11558-E544B574-2BA69658-36EC39CD-9B8326C4-v33/Browsers/History/GoogleChrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "fe3a4a9d-fda1-4991-8ef9-9bd55cf19fb2", "data_type": "Documento"}, {"date": "2021-05-06T15:59:10.517885Z", "name": "268276_AR_200.3.219.134_03-11-19.rar/History/Opera_Stable.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "977a501b-b072-49be-9e7b-1f37ca62ec20", "data_type": "Documento"}, {"date": "2021-05-06T10:32:07.500685Z", "name": "277234_AR_190.188.33.131_04-11-19.rar/History/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 47, "systemid": "a337ae59-3f0d-4340-b36f-7a85cefbdbc0", "data_type": "Documento"}, {"date": "2025-06-17T14:22:40.098869Z", "name": "[AR]190.105.81.2.rar/Chrome/Profile 4/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "11c2953e-8cbf-4a41-bcbd-c8de76a9bbf5", "data_type": "IP"}, {"date": "2025-06-17T14:13:34.08014Z", "name": "[AR]181.47.108.218.rar/Chrome/Profile 2/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "2a6ba7eb-f464-4014-95e3-351999e6d956", "data_type": "IP"}, {"date": "2025-06-17T14:13:21.061328Z", "name": "[AR]181.45.47.192.rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "65b73fdc-2ab2-498b-91e2-e14fe0eaceff", "data_type": "IP"}, {"date": "2025-05-01T10:43:26.84879Z", "name": "ARKXMK51LIAJ8VX12K0IO9INFUHID4ETN_2025_04_21T15_14_98_390195.rar/Browser/Bookmarks/Chrome_Profile 1[f964e51c].txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "215ae558-9a65-40c3-ab92-3407792dd2bf", "data_type": "Documento"}, {"date": "2025-03-26T19:08:45.251452Z", "name": "[AR]181.46.9.10.rar/[AR]181.46.9.10/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "a4cb755d-d881-4137-a58c-f253fe7df3c9", "data_type": "IP"}, {"date": "2025-03-26T19:01:35.570526Z", "name": "[AR]179.38.57.25[va1].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "6e60bc0e-e760-40c8-8519-7f33285f2d0d", "data_type": "IP"}, {"date": "2025-03-20T20:22:25.638059Z", "name": "[AR]186.128.117.73.rar.rar/[AR]186.128.117.73.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "f42278cb-f246-4ba1-b269-05a9c9aee9aa", "data_type": "IP"}, {"date": "2025-03-14T18:49:19.081619Z", "name": "AR[1AF0A96BC96905B7050E7CD20F2C70E61AF0A96][22-02-2025-15_21_45].rar/Edge/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "3d96115b-a13a-49cb-885c-39b66d18ab1c", "data_type": "Documento"}, {"date": "2025-03-13T21:53:21.505938Z", "name": "[AR]186.158.220.197.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "f9f0b8c8-80d2-4c03-a809-c671b813ed04", "data_type": "IP"}, {"date": "2025-03-13T21:44:18.70811Z", "name": "[AR]179.38.57.25.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "9338336c-8112-48ec-93e5-5b7795f02a33", "data_type": "IP"}, {"date": "2025-03-07T06:07:00.214993Z", "name": "[1 subs] [3 videos] [96 views] [2fa false] [verified false] [monetized false] [AR] [2011] [UCy4-YHWmy8w8-MS-7_gN8MQ].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "237ded2c-4da6-4531-9483-5102fb3a7bb5", "data_type": "Documento"}, {"date": "2025-02-17T14:32:44.031012Z", "name": "[AR]181.46.9.10.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "9b424688-e56d-42d0-a818-0931640da99e", "data_type": "IP"}, {"date": "2025-01-22T07:34:12.914339Z", "name": "[AR]186.18.46.101.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "097693ed-f09b-4e4d-a855-34b7edab70d2", "data_type": "IP"}, {"date": "2025-01-11T10:29:00.067819Z", "name": "[AR]190.48.83.194[iShop]-[@TovarovLogs].rar/Chrome/Profile 2/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "edc857fc-194c-4a5f-8b1e-e4542784c27c", "data_type": "Email"}, {"date": "2025-01-09T19:03:34.899796Z", "name": "[AR]_bot (49).rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "3b313534-91a6-4b46-9b56-a7726d9ec0ee", "data_type": "Documento"}, {"date": "2024-12-10T10:33:45.070351Z", "name": "[AR]190.55.230.235.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "a8886e91-3a09-4398-8f80-57d69021afe4", "data_type": "IP"}, {"date": "2024-11-09T06:03:50.723508Z", "name": "[AR]45.239.128.92 (2).rar/[AR]45.239.128.92/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "7d00c651-7755-4005-846a-32636ee75848", "data_type": "IP"}, {"date": "2024-11-09T06:03:50.722988Z", "name": "[AR]45.239.128.92.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "e8456ebd-fee5-4993-9282-99537e6e8412", "data_type": "IP"}, {"date": "2024-10-26T08:20:57.868693Z", "name": "[AR]181.117.161.177.rar/Edge/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "53da4055-2d8f-4e97-be3b-fd77cf256416", "data_type": "IP"}, {"date": "2024-09-23T04:41:30.840952Z", "name": "[AR]200.122.50.20.rar/Chrome/Profile 10/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "cf0c8150-bf13-4bdf-bd8e-9b6485888594", "data_type": "IP"}, {"date": "2024-09-23T04:38:47.504643Z", "name": "[AR]181.117.72.119.rar/Chrome/Profile 1/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "0f5aae45-db17-480d-a79f-0e73b8e3facd", "data_type": "IP"}, {"date": "2024-09-16T05:04:29.161784Z", "name": "[AR]190.105.75.78.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "9e342ba0-52d9-4d5b-bfe2-d83a7cf30ce3", "data_type": "IP"}, {"date": "2024-09-16T05:04:28.810656Z", "name": "[AR]190.105.75.78.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "21144710-47f6-433d-9b30-6c0f6929dca1", "data_type": "IP"}, {"date": "2024-09-16T05:01:01.067682Z", "name": "[AR]186.122.88.151.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "03dd66fd-6805-417a-a646-9f0608874e50", "data_type": "IP"}, {"date": "2024-09-16T04:57:50.757276Z", "name": "[AR]181.28.251.166.rar/Important Files/Profile/Downloads/Google Passwords.csv", "bucket": "leaks.logs", "type": 1, "media": 32, "media_label": "Source Code", "xscore": 46, "systemid": "82f15c6c-1873-428a-bc33-83352a617a65", "data_type": "IP"}, {"date": "2024-09-12T15:46:07.563497Z", "name": "[AR]_Botlogs (455).rar/Brave/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "5cfe4125-283a-4827-9d07-009fadd2f737", "data_type": "Documento"}, {"date": "2024-09-05T10:21:43.469168Z", "name": "[AR]38.51 (3).91.rar/Brave/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "d9b3e6d7-a63b-4889-b667-a299c1e2c5da", "data_type": "Documento"}, {"date": "2024-09-05T10:18:16.830732Z", "name": "[AR]191 (2).84.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "f6c91c42-3762-498e-a6d7-077848cf024a", "data_type": "Documento"}, {"date": "2024-09-05T10:12:29.440164Z", "name": "[AR]186.137.rar/Chrome/Profile 5/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "9992fc3a-af2a-4ea3-9c39-17071aabe884", "data_type": "Documento"}, {"date": "2024-09-05T10:01:08.341266Z", "name": "[AR]181 (4).28.rar/Opera GX Stable/Opera GX Stable/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "fa5a1aeb-956c-43d6-87c8-4dce7a462b2c", "data_type": "Documento"}, {"date": "2024-05-24T06:02:05.908294Z", "name": "[AR]186.19.123.166.rar/Chrome/Profile 7/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "0c3bae4b-9ac4-4f8b-90c9-d581e80d99ec", "data_type": "IP"}, {"date": "2024-05-15T10:49:52.714652Z", "name": "[AR]191.84.223.83.rar/Edge/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "f484ba79-ca89-4710-b44a-b8fed420fedf", "data_type": "IP"}, {"date": "2024-05-15T10:49:52.496576Z", "name": "[AR]191.84.223.83.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "6db7a6ed-4b7b-45ee-a2b6-61f03af0ced3", "data_type": "IP"}, {"date": "2024-03-23T19:17:09.349921Z", "name": "[AR]179.37.1.103.rar/Opera GX Stable/Opera GX Stable/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "0c310044-53c2-4416-867c-bba4ea0c48a7", "data_type": "IP"}, {"date": "2024-03-23T08:33:16.853915Z", "name": "[AR][UniSat]190.244.63.154[15.12 13 32 12].rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "04d6de68-5997-42bf-b1d6-d0f0f4e30f95", "data_type": "IP"}, {"date": "2024-03-23T08:29:52.828061Z", "name": "[AR]181.46.9.144.rar/Edge/Profile 2/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "09ba0cbf-64fe-4fc8-987c-1c30e71cb587", "data_type": "IP"}, {"date": "2024-02-29T20:40:02.092466Z", "name": "AR_190.174.86.67.rar/History/Chrome_Profile 1.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "59b028f2-9f41-47eb-b4dc-9bd7d0d36b1f", "data_type": "Documento"}, {"date": "2021-11-07T06:27:36.997946Z", "name": "AR-2019-06-01 02-35-32B9FCBF3B-86C3DFC7-323B1B43-B9D7220B-83146D0E-v33.rar/Browsers/History/GoogleChrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "0279a4d2-1759-4dd7-8039-4381c96a1b7e", "data_type": "Documento"}, {"date": "2021-11-07T03:59:04.039382Z", "name": "AR-2019-04-29 00-02-38359CF622-343A2EC6-3081C948-49E403E3-9BD79A6E-v33.rar/AR-2019-04-29 00-02-38359CF622-343A2EC6-3081C948-49E403E3-9BD79A6E-v33/Browsers/History/GoogleChrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "dd1e3b37-58d2-457a-a63c-d5ea7565d19b", "data_type": "Documento"}, {"date": "2021-11-07T03:53:52.99824Z", "name": "AR-2019-06-05 21-04-2267FD453C-9414907A-867BFA0C-C0D3CCFB-06A26503-v33.rar/Browsers/History/GoogleChrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "02ecfe33-c9ac-4ef2-9baf-ca83939a938b", "data_type": "Documento"}, {"date": "2021-11-07T01:48:45.022652Z", "name": "AR-2019-06-11 01-20-569A00F44F-343A2EC6-F5CE339B-F48C7E2A-E983DB92-v33.rar/Browsers/History/GoogleChrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "35d36e87-f26f-40d4-9d72-2d4eda6d5cf0", "data_type": "Documento"}, {"date": "2020-01-16T14:47:51Z", "name": "17.01.20 10kk/201104_AR_181.165.115.245_16-01-20.zip/History/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 46, "systemid": "40195776-c537-4876-94a1-dd98cf9b4fa7", "data_type": "Documento"}, {"date": "2025-06-06T09:46:25.546085Z", "name": "[AR]181.44.116.19.rar/Chrome/Default/History.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 41, "systemid": "74368513-3cfd-4a36-8f88-3fa59c4ac52f", "data_type": "IP"}, {"date": "2024-03-01T09:21:44.441306Z", "name": "[AR]186.132.214.33.rar/Chrome/Profile 1/History.txt [Part 2 of 5]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 41, "systemid": "ce2d2320-904a-4985-9bce-09bd2948e791", "data_type": "IP"}, {"date": "2019-07-09T01:16:28Z", "name": "", "bucket": "pastes", "type": 1, "media": 1, "media_label": "Paste Document", "xscore": 41, "systemid": "725837bf-1845-4882-9c2c-1fa64c1c5ecc", "data_type": "Otro"}, {"date": "2025-07-30T22:09:38.305373Z", "name": "[AR]186.22.17.36.rar/Browser/History/Chrome_Profile 2[5d436b12].txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "569d4a53-be47-4624-889e-d53c5fad9030", "data_type": "IP"}, {"date": "2025-03-29T17:45:45.774562Z", "name": "186.19.22.159_AR_2025_03_23.rar/Browser/History/Chrome_Default[13610760].txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "3304b2eb-8295-4847-bdcd-2009067b98f3", "data_type": "Documento"}, {"date": "2024-12-13T16:42:51.813197Z", "name": "AR_190.55.230.235_2024_11_29_12_11_53.rar/history/Microsoft Edge_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "17cff762-b2aa-408c-8baf-130f6dd7ce66", "data_type": "Documento"}, {"date": "2024-12-13T16:42:51.813197Z", "name": "AR_190.55.230.235_2024_11_25_23_36_03.rar/history/Microsoft Edge_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "97e8b3dd-3be1-4e0a-b8e8-12914427e08a", "data_type": "Documento"}, {"date": "2024-09-01T10:08:47.63223Z", "name": "24858_AR_181.45.34.115_27-12-22.rar/History/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "c534b1f5-ff77-4da0-b0ef-585229dc5566", "data_type": "Documento"}, {"date": "2024-07-27T11:22:37.890448Z", "name": "AR_190.19.85.251_2024_7_16_14_7_59.rar/history/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "6568bab6-85c6-478d-bb29-89e1bbc8129c", "data_type": "Documento"}, {"date": "2024-07-27T11:22:25.58227Z", "name": "AR_190.122.146.28_2024_7_16_16_0_29.rar/history/Mozilla Firefox_de825ez9.default-release.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "3d9bc50c-b4b4-4fcd-990d-b631b96bf4b0", "data_type": "Documento"}, {"date": "2024-07-27T11:22:02.207306Z", "name": "AR_181.20.138.44_2024_7_16_0_22_16.rar/history/Google Chrome_Profile 4.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "5a385466-30bb-4307-8d19-e2bd051e6b91", "data_type": "Documento"}, {"date": "2024-07-09T21:06:19.855292Z", "name": "7764_AR_181.117.10.77.rar/History/Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "81cbe93d-fea1-4c32-ab8b-3ffb048ab5b8", "data_type": "Documento"}, {"date": "2024-06-28T10:56:43.140996Z", "name": "AR[04E5CC5D9D1B6492CC7FCE67CBAE4130]19-06-2024-04_03_58].rar/History/Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "cdf70f2e-6882-4020-9484-72ae36e8aa51", "data_type": "Documento"}, {"date": "2024-06-06T11:12:51.381783Z", "name": "AR[CC255044499B3566182515CC25504449]22-05-2024-19_56_06].rar/history/Microsoft Edge_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "c8384478-47f5-4730-b535-ae60e65f2b3c", "data_type": "Documento"}, {"date": "2024-05-04T18:56:55.84834Z", "name": "AR[88623de37290a647a19b01a2dcbca51f][190.18.176.39][2024_04_09T15_14_07].rar/History/Firefox_50uthz7d.default-release.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "c679d19a-04c0-4d57-8297-e958f11711e8", "data_type": "IP"}, {"date": "2024-04-26T09:18:14.249781Z", "name": "AR_181.47.102.18_2024-4-7 23_36_53_7JLD6C3WAB2R7QMUU95.rar/Browser/History/Chrome_Profile 5[95502792].txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "04cc6b6c-b7c2-4459-8bbf-f4f00307c2e3", "data_type": "Documento"}, {"date": "2024-04-26T09:18:14.231681Z", "name": "AR_181.47.102.18_2024-4-7 23_36_53_7JLD6C3WAB2R7QMUU95.rar/Browser/History/Chrome_Profile 4[d36b40f7].txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "59bd5310-08e7-4313-8776-629713a54efd", "data_type": "Documento"}, {"date": "2024-04-13T16:33:40.79825Z", "name": "LOGS CLOUD (2580).com.rar/ LOGS CLOUD (2580).com/history/Microsoft Edge_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "b9ecc5f6-5cd3-4a3c-b99f-0b45360b03e7", "data_type": "Dominio"}, {"date": "2024-03-26T09:39:03.935194Z", "name": "AR_7e6c3537b4a6f41683fef3e40fa17b5e.rar/History/Brave_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "da434d70-b7e6-4d3f-ab85-1a88a6af14c9", "data_type": "Documento"}, {"date": "2024-03-01T09:21:44.464367Z", "name": "[AR]186.132.214.33.rar/Chrome/Profile 1/History.txt [Part 3 of 5]", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "4cee6291-deb3-4312-a541-2b4bee540e37", "data_type": "IP"}, {"date": "2024-02-24T22:32:14.503773Z", "name": "79119_AR_179.36.159.13.rar/History/Brave_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "5e024bd3-9caf-4ca9-839e-3577f45ad2d2", "data_type": "Documento"}, {"date": "2023-07-05T10:49:58.686263Z", "name": "AR_186.19.22.1_10.11.2022.rar/History/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "0257eb03-26f8-4ce2-aa6e-ef14ec29925f", "data_type": "Documento"}, {"date": "2023-07-05T10:37:49.627324Z", "name": "AR_181.45.143.252_14.11.2022.rar/History/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "f91d0d4a-88df-467a-8447-35e9f888c5e0", "data_type": "Documento"}, {"date": "2023-07-04T12:11:22.670649Z", "name": "_AR_186.22.56.137_11-11-22.zip.rar/History/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "f4739ab3-3d43-427a-bbe4-cccbaca70647", "data_type": "Documento"}, {"date": "2023-01-09T04:16:26.519648Z", "name": "AR_190.48.rar/History/Google Chrome_Default.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "30ee4406-999a-4537-94e5-57efb9c7f054", "data_type": "Documento"}, {"date": "2022-10-28T15:33:27.041814Z", "name": "_AR_181.171.76.183_07-10-22.zip.rar/History/Google Chrome_Profile 1.txt", "bucket": "leaks.logs", "type": 1, "media": 24, "media_label": "Text File", "xscore": 40, "systemid": "9f25f726-3de2-4e33-a4e3-f24fef43f0e9", "data_type": "Documento"}];
+        let filteredData = [...tableData];
+        let currentSort = { column: 'date', direction: 'desc' };
+
+        function renderTable(data) {
+            const tbody = document.querySelector('#resultsTable tbody');
+            tbody.innerHTML = '';
+            
+            data.forEach(record => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${record.date || 'N/A'}</td>
+                    <td class="name-cell" title="${record.name || 'N/A'}">${truncateText(record.name || 'N/A', 40)}</td>
+                    <td><span class="badge badge-${record.data_type.toLowerCase().replace(/\s+/g, '-')}">${record.data_type}</span></td>
+                    <td class="source-cell" title="${record.bucket || 'N/A'}">${truncateText(record.bucket || 'N/A', 30)}</td>
+                    <td>${record.media_label || 'N/A'}</td>
+                    <td class="score-cell">
+                        <span class="score score-${getScoreClass(record.xscore)}">${record.xscore || '–'}</span>
+                    </td>
+                    <td>
+                        ${record.systemid ? 
+                            `<a href="https://intelx.io/?s=${record.systemid}" target="_blank" class="btn-link">Ver</a>` : 
+                            'N/A'
+                        }
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Update results count
+            document.getElementById('resultsCount').textContent = `Mostrando ${data.length} de ${tableData.length} resultados`;
+        }
+
+        function truncateText(text, maxLength) {
+            if (text.length <= maxLength) return text;
+            return text.substring(0, maxLength) + '...';
+        }
+
+        function getScoreClass(score) {
+            if (!score || score === '–') return 'low';
+            const numScore = parseInt(score);
+            if (numScore >= 80) return 'high';
+            if (numScore >= 50) return 'medium';
+            return 'low';
+        }
+
+        function sortData(column, direction) {
+            filteredData.sort((a, b) => {
+                let aVal = a[column] || '';
+                let bVal = b[column] || '';
+                
+                // Handle numeric values
+                if (column === 'xscore') {
+                    aVal = parseInt(aVal) || 0;
+                    bVal = parseInt(bVal) || 0;
+                }
+                
+                // Handle dates
+                if (column === 'date') {
+                    aVal = new Date(aVal || '1970-01-01');
+                    bVal = new Date(bVal || '1970-01-01');
+                }
+                
+                if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function applyFilters() {
+            const typeFilter = document.getElementById('typeFilter').value;
+            const sourceFilter = document.getElementById('sourceFilter').value;
+            const dateFromFilter = document.getElementById('dateFromFilter').value;
+            const dateToFilter = document.getElementById('dateToFilter').value;
+            const searchInput = document.getElementById('searchInput').value.toLowerCase();
+            
+            filteredData = tableData.filter(record => {
+                // Type filter
+                if (typeFilter && record.data_type !== typeFilter) return false;
+                
+                // Source filter
+                if (sourceFilter && record.bucket !== sourceFilter) return false;
+                
+                // Date range filter
+                if (dateFromFilter || dateToFilter) {
+                    const recordDate = new Date(record.date || '1970-01-01');
+                    if (dateFromFilter && recordDate < new Date(dateFromFilter)) return false;
+                    if (dateToFilter && recordDate > new Date(dateToFilter)) return false;
+                }
+                
+                // Search filter
+                if (searchInput) {
+                    const searchFields = [
+                        record.name || '',
+                        record.data_type || '',
+                        record.bucket || '',
+                        record.media_label || ''
+                    ].join(' ').toLowerCase();
+                    
+                    if (!searchFields.includes(searchInput)) return false;
+                }
+                
+                return true;
+            });
+            
+            // Apply current sort
+            sortData(currentSort.column, currentSort.direction);
+            renderTable(filteredData);
+        }
+
+        function initializeTable() {
+            // Initial sort and render
+            sortData('date', 'desc');
+            renderTable(filteredData);
+            
+            // Add event listeners for filters
+            ['typeFilter', 'sourceFilter', 'dateFromFilter', 'dateToFilter', 'searchInput'].forEach(id => {
+                document.getElementById(id).addEventListener('change', applyFilters);
+                document.getElementById(id).addEventListener('input', applyFilters);
+            });
+            
+            // Clear filters button
+            document.getElementById('clearFilters').addEventListener('click', () => {
+                document.getElementById('typeFilter').value = '';
+                document.getElementById('sourceFilter').value = '';
+                document.getElementById('dateFromFilter').value = '';
+                document.getElementById('dateToFilter').value = '';
+                document.getElementById('searchInput').value = '';
+                applyFilters();
+            });
+            
+            // Sortable headers
+            document.querySelectorAll('.sortable').forEach(header => {
+                header.addEventListener('click', () => {
+                    const column = header.dataset.column;
+                    const newDirection = (currentSort.column === column && currentSort.direction === 'asc') ? 'desc' : 'asc';
+                    
+                    // Update sort indicators
+                    document.querySelectorAll('.sort-icon').forEach(icon => {
+                        icon.textContent = '↕';
+                    });
+                    header.querySelector('.sort-icon').textContent = newDirection === 'asc' ? '↑' : '↓';
+                    
+                    currentSort = { column, direction: newDirection };
+                    sortData(column, newDirection);
+                    renderTable(filteredData);
+                });
+            });
+        }
+
+        // Initialize table when DOM is ready
+        document.addEventListener('DOMContentLoaded', initializeTable);
+        
+    </script>
+</body>
+</html>

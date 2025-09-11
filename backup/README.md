@@ -2,15 +2,7 @@
 
 ![Banner de portada](docs/assets/banner.jpg)
 
-> **IntelX Checker** — Aplicación avanzada para investigar filtraciones de datos y fuentes OSINT. Busca, visualiza y exporta resultados de Intelligence X en una interfaz moderna y profesional con **reportes interactivos SVG**.
-
-## 🆕 Nuevas Características V2.1
-- 📊 **Reportes Interactivos SVG:** Gráficos standalone sin dependencias externas
-- 🎯 **3 Visualizaciones Clave:** Distribución de tipos, fuentes principales y evolución temporal (5 años)
-- 📱 **Diseño Completamente Responsivo:** Funciona perfectamente en cualquier dispositivo
-- 🚀 **100% Offline:** Los reportes funcionan sin conexión a Internet
-- 📈 **Gráficos Ampliados:** Visualizaciones más grandes y legibles
-- 🎨 **Interfaz Moderna:** Diseño Windows 11/macOS con tipografía optimizada
+> **IntelX Checker** — Aplicación avanzada para investigar filtraciones de datos y fuentes OSINT. Busca, visualiza y exporta resultados de Intelligence X en una interfaz moderna y profesional.
 
 ## Apoya el Proyecto
 Esta herramienta es un proyecto de código abierto. Si te resulta útil, considera apoyar su desarrollo con una donación.
@@ -18,52 +10,33 @@ Esta herramienta es un proyecto de código abierto. Si te resulta útil, conside
 [![Donar con PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif)](https://www.paypal.com/donate/?hosted_button_id=6W8LAAFX9BN6E)
 
 ## Tabla de Contenidos
-- [Nuevas Características V2.1](#-nuevas-características-v21)
 - [Características Destacadas](#características-destacadas)
-- [Reportes Interactivos](#-reportes-interactivos)
 - [Ideal para](#ideal-para)
 - [Screenshots](#screenshots)
-- [Instalación Rápida](#-instalación-rápida)
+- [Requisitos](#requisitos)
+- [Instalación](#instalación)
+- [Configuración](#configuración)
 - [Uso](#uso)
 - [Estructura de Carpetas](#estructura-de-carpetas)
 - [Licencia](#licencia)
 - [Créditos](#créditos)
 - [Contacto y Soporte](#contacto-y-soporte)
+- [Palabras Clave (SEO)](#palabras-clave-seo)
 
 ## Características Destacadas
 - 🔍 **Búsqueda Potente:** Realiza búsquedas en la API de Intelligence X por correo electrónico o dominio.
 - 🎯 **Filtro de Fuentes:** Selecciona las fuentes de datos (buckets) específicas en las que deseas buscar.
-- 📊 **Reportes SVG Interactivos:** Gráficos modernos sin dependencias JavaScript externas.
-- 💾 **Exportación Versátil:** Exporta a CSV, JSON y **HTML interactivo** para análisis posterior.
+- 📊 **Visualización Clara:** Muestra los resultados en una tabla organizada que puedes ordenar por fecha, nombre, fuente o tipo.
+- 💾 **Exportación Versátil:** Exporta los resultados de tu búsqueda a archivos CSV o JSON para un análisis posterior.
 - 🔑 **Gestión Segura de API Key:** Guarda tu clave de API de Intelligence X de forma segura.
 - 📚 **Documentación Integrada:** Visualización interna de manual y glosario para consulta rápida.
 - ✨ **Interfaz Moderna:** Una interfaz limpia y fácil de usar con soporte para temas claro y oscuro.
 - 🖼️ **Iconografía Consistente:** Todos los cuadros de diálogo muestran el icono de la aplicación.
 
-## 📊 Reportes Interactivos
-
-### Características de los Reportes HTML
-- **🍩 Gráfico de Distribución:** Tipos de datos encontrados (donut chart)
-- **📊 Gráfico de Fuentes:** Top fuentes de información (bar chart)  
-- **📈 Evolución Temporal:** Tendencias de 5 años por trimestres (line chart)
-- **🔍 Tabla Filtrable:** Datos completos con filtros por tipo y fuente
-- **📱 Responsive Design:** Se adapta a cualquier tamaño de pantalla
-- **🚀 Standalone:** Funciona sin Internet, sin dependencias externas
-
-### Generación de Reportes
-```bash
-# Desde la interfaz gráfica
-Menu → Exportar → HTML Interactivo
-
-# Desde línea de comandos
-python generate_report.py
-```
-
 ### 🎯 Ideal para:
 -   **Analistas de Seguridad:** Investigar filtraciones de datos y correlacionar información de OSINT.
 -   **Investigadores Forenses:** Extraer y analizar datos de fuentes públicas y privadas.
 -   **Profesionales de Ciberseguridad:** Monitorear la exposición de credenciales y dominios.
--   **Equipos de Threat Intelligence:** Generar reportes visuales para presentaciones ejecutivas.
 
 ## Screenshots
 
@@ -73,16 +46,21 @@ python generate_report.py
 **Exportación de Tabla CSV**
 ![Exportación de tabla CSV](docs/assets/csv_table_export.jpg)
 
-**Reporte HTML Interactivo**
+**Reporte HTML generado**
 ![Reporte HTML generado](docs/assets/reporte.jpg)
 
-## 🚀 Instalación Rápida
+## 🚀 Requisitos
 
-### Requisitos
 - **Python 3.10 o superior**
-- Las dependencias de Python listadas en `requirements.txt`
+- Las dependencias de Python listadas en `requirements.txt`:
+    - `customtkinter`
+    - `tkhtmlview`
+    - `markdown2`
+    - `Pillow`
+    - `requests`
+    - `python-dotenv`
 
-### Instalación en 3 Pasos
+## ⚙️ Instalación
 
 1.  **Clona el repositorio:**
     ```bash
@@ -90,22 +68,9 @@ python generate_report.py
     cd IntelX-Checker
     ```
 
-2.  **Instala las dependencias:**
+2.  **Crea un entorno virtual (recomendado):**
     ```bash
-    pip install -r requirements.txt
-    ```
-
-3.  **Ejecuta la aplicación:**
-    ```bash
-    python main.py
-    ```
-
-### Dependencias Principales
-- `customtkinter` - Interfaz gráfica moderna
-- `tkhtmlview` - Visualización HTML integrada  
-- `requests` - Comunicación con API de Intelligence X
-- `Pillow` - Procesamiento de imágenes
-- `python-dotenv` - Gestión de configuración
+    python -m venv venv
     # En Windows
     .\venv\Scripts\activate
     # En macOS/Linux
