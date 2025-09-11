@@ -84,6 +84,6 @@ def generate_data_table_html(data):
     cols = ['date','name','bucket','media','systemid']
     html = '<table><thead><tr>' + ''.join(f'<th>{c}</th>' for c in cols) + '</tr></thead><tbody>'
     for item in data:
-        html += '<tr>' + ''.join(f'<td>{item.get(c,'')}</td>' for c in cols) + '</tr>'
+        html += '<tr>' + ''.join(f'<td>{item.get(c,"")}</td>' for c in cols) + '</tr>'
     html += '</tbody></table>'
     return html
