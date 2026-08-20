@@ -589,6 +589,26 @@ class StyleGenerator:
             opacity: 0.9;
         }
 
+        .header-actions {
+            margin-top: 1.25rem;
+        }
+
+        .btn-export-pdf {
+            padding: 0.7rem 1rem;
+            color: #312e81;
+            background: white;
+            border: 0;
+            border-radius: 0.5rem;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-export-pdf:hover {
+            background: #eef2ff;
+        }
+
         /* KPI Cards */
         .kpi-grid {
             display: grid;
@@ -975,6 +995,11 @@ class StyleGenerator:
 
         /* Print styles */
         @media print {
+            @page {
+                size: A4 portrait;
+                margin: 12mm;
+            }
+
             body {
                 background: white;
             }
@@ -990,14 +1015,29 @@ class StyleGenerator:
                 color-adjust: exact;
             }
 
-            .charts-section, .table-section {
-                break-inside: avoid;
+            .header-actions, .filters-container, .btn-link {
+                display: none !important;
             }
 
-            .btn-link {
-                background: #6366f1 !important;
+            .header, .charts-section, .table-section, .kpi-card, .chart-card {
+                box-shadow: none;
+            }
+
+            .header {
                 -webkit-print-color-adjust: exact;
                 color-adjust: exact;
+            }
+
+            .table-container {
+                overflow: visible;
+            }
+
+            #resultsTable {
+                font-size: 0.7rem;
+            }
+
+            #resultsTable thead {
+                display: table-header-group;
             }
         }
         """
@@ -1091,6 +1131,11 @@ class InteractiveReportGenerator:
                 <strong>Generado:</strong> {timestamp} • 
                 <strong>Versión:</strong> {self.app_version}
             </div>
+            <div class="header-actions">
+                <button type="button" id="exportPdf" class="btn-export-pdf">
+                    Exportar a PDF
+                </button>
+            </div>
         </header>
 
         <!-- KPI Section -->
@@ -1125,6 +1170,10 @@ class InteractiveReportGenerator:
     <script>
     {charts_js}
     {table_js}
+
+    document.getElementById('exportPdf').addEventListener('click', () => {{
+        window.print();
+    }});
     </script>
 </body>
 </html>"""

@@ -1,4 +1,4 @@
-"""Export helpers: CSV, JSON and interactive HTML report generation extracted from the legacy GUI.
+"""Export helpers for CSV, JSON, PDF and interactive HTML reports.
 
 These functions are UI-agnostic and return the path of the created file. The GUI
 can display messages or open the file/folder as needed.
@@ -15,6 +15,17 @@ import logging
 from interactive_report import generate_interactive_html_report
 
 logger = logging.getLogger(__name__)
+
+
+def _pdf_text(value: Any) -> str:
+    """Return text that ReportLab's built-in fonts can render safely."""
+    if value is None:
+        return ''
+    if isinstance(value, (dict, list, tuple)):
+        value = json.dumps(value, ensure_ascii=False, default=str)
+    # Helvetica uses WinAnsi encoding. Replacing unsupported glyphs is preferable
+    # to failing an otherwise valid export because a result contains an emoji.
+    return str(value).encode('latin-1', 'replace').decode('latin-1')
 
 
 def _default_exports_dir(kind: str) -> str:
@@ -83,6 +94,97 @@ def export_to_json(records: List[Dict[str, Any]], filename: Optional[str] = None
     except Exception:
         logger.exception('Error writing JSON export')
         raise
+
+
+def generate_pdf_report(records: List[Dict[str, Any]], title: str = 'IntelX Export',
+                        filename: Optional[str] = None,
+                        exports_dir: Optional[str] = None) -> str:
+    """Generate a printable PDF report from Intelligence X search results.
+
+    The report keeps the fields shown in the results grid and wraps long values
+    so every column remains inside an A4 portrait page.
+    """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                        Table, TableStyle)
+    except ImportError as exc:
+        raise RuntimeError(
+            'La exportación a PDF requiere la dependencia "reportlab". '
+            'Instale las dependencias de la aplicación y vuelva a intentarlo.'
+        ) from exc
+
+    if exports_dir is None:
+        exports_dir = _default_exports_dir('pdf')
+    else:
+        os.makedirs(exports_dir, exist_ok=True)
+    if not filename:
+        safe_title = ''.join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
+        stem = safe_title.replace(' ', '_') or 'IntelX_Export'
+        filename = f'{stem}_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.pdf'
+    if not filename.lower().endswith('.pdf'):
+        filename += '.pdf'
+    filepath = os.path.join(exports_dir, filename)
+
+    styles = getSampleStyleSheet()
+    heading = ParagraphStyle('PDFHeading', parent=styles['Heading1'], alignment=TA_CENTER,
+                             fontName='Helvetica-Bold', fontSize=16, leading=20,
+                             textColor=colors.HexColor('#1f4e79'), spaceAfter=4)
+    subtitle = ParagraphStyle('PDFSubtitle', parent=styles['Normal'], alignment=TA_CENTER,
+                              fontSize=9, leading=12, textColor=colors.HexColor('#555555'))
+    cell = ParagraphStyle('PDFCell', parent=styles['Normal'], alignment=TA_LEFT,
+                          fontSize=7, leading=9)
+    header = ParagraphStyle('PDFHeader', parent=cell, alignment=TA_CENTER,
+                            fontName='Helvetica-Bold', textColor=colors.white)
+
+    fields = [
+        ('date', 'Fecha', 20 * mm),
+        ('name', 'Nombre', 48 * mm),
+        ('bucket', 'Fuente', 28 * mm),
+        ('type', 'Tipo', 18 * mm),
+        ('size', 'Tamaño', 16 * mm),
+        ('storageid', 'ID', 48 * mm),
+    ]
+    data = [[Paragraph(label, header) for _, label, _ in fields]]
+    for record in records:
+        data.append([
+            Paragraph(_pdf_text(record.get(key)), cell)
+            for key, _, _ in fields
+        ])
+
+    document = SimpleDocTemplate(
+        filepath, pagesize=A4, leftMargin=12 * mm, rightMargin=12 * mm,
+        topMargin=13 * mm, bottomMargin=13 * mm, title=_pdf_text(title),
+        author='IntelX Checker',
+    )
+    table = Table(data, colWidths=[width for _, _, width in fields], repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f4e79')),
+        ('GRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#c8d2dc')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f4f7fa')]),
+    ]))
+    story = [
+        Paragraph(_pdf_text(title), heading),
+        Paragraph(f'Resultados exportados: {len(records)} | Generado: {datetime.now().strftime("%d/%m/%Y %H:%M")}', subtitle),
+        Spacer(1, 7 * mm), table,
+    ]
+    try:
+        document.build(story)
+    except Exception:
+        logger.exception('Error writing PDF export')
+        raise
+
+    logger.info('PDF export written: %s', filepath)
+    return filepath
 
 
 def select_records_for_export(records: List[Dict[str, Any]], selected_ids: Optional[List[str]] = None, id_field: str = 'storageid') -> List[Dict[str, Any]]:

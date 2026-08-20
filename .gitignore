@@ -10,6 +10,11 @@ __pycache__/
 # Exportaciones y backups
 exports/csv/*.csv
 exports/*
+/offline_report.html
+
+# Mantener la carpeta de reportes, pero nunca sus datos generados.
+reports/*
+!reports/.gitkeep
 intelx/gui_backup_*.py
 
 # Archivos temporales

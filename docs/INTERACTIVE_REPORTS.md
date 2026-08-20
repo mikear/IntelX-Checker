@@ -31,6 +31,7 @@ El nuevo sistema de reportes HTML proporciona una experiencia moderna e interact
 - ✅ **Sin dependencias locales**: Usa CDN para Chart.js
 - ✅ **Completamente funcional offline**: Una vez cargado funciona sin internet
 - ✅ **Fácil compartir**: Se puede enviar por email o subir a cualquier servidor
+- ✅ **Exportación a PDF**: El botón “Exportar a PDF” abre la impresión del navegador; elige “Guardar como PDF” para crear una copia del informe.
 
 #### 5. **Diseño Moderno**
 - ✅ **Estilo Windows 11/macOS**: Colores y tipografía moderna
