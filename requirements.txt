@@ -22,5 +22,8 @@ tkhtmlview>=0.3.1
 matplotlib>=3.7.0
 pandas>=2.0.0
 
+# Generación de informes PDF desde Archivo > Exportar a PDF
+reportlab>=4.0.0
+
 # Note: Chart.js is loaded via CDN in the HTML reports for interactivity
 # No additional Python dependencies needed for the interactive HTML reports

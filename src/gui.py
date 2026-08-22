@@ -313,7 +313,7 @@ class IntelXCheckerApp(ctk.CTk):
         menubar.add_cascade(label="Archivo", menu=file_menu)
         file_menu.add_command(label="Exportar a CSV...", command=self.export_to_csv_safe)
         file_menu.add_command(label="Exportar a JSON...", command=self.export_to_json_safe)
-    # file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf_safe)
+        file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf_safe)
         file_menu.add_command(label="Exportar a HTML...", command=self.export_to_html_safe)
         file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.quit)
@@ -1014,16 +1014,27 @@ class IntelXCheckerApp(ctk.CTk):
             ui_components.show_export_selection_dialog(self, selected_records)
 
     # --- Export methods (using modular architecture) ---
-    # def export_to_pdf_safe(self):
-    #     """Exportar a PDF usando módulo de exportación"""
-    #     try:
-    #         records_to_export = self.current_records if self.current_records else self.all_records
-    #         search_term = self.search_entry.get().strip()
-    #         filepath = exports_module.generate_pdf_report(records_to_export, title=search_term)
-    #         ui_components.show_custom_messagebox(self, "Exportación PDF", f"PDF exportado en: {filepath}", "info")
-    #     except Exception as e:
-    #         logger.exception('Error exporting PDF')
-    #         ui_components.show_custom_messagebox(self, 'Error', f'Error exportando PDF: {e}', 'error')
+    def export_to_pdf_safe(self):
+        """Exportar resultados o la selección actual a un informe PDF."""
+        try:
+            if not self.current_records:
+                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                return
+
+            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
+            records_to_export = ui_components.get_records_to_export_dialog(
+                self, self.current_records, selected_ids
+            )
+            if not records_to_export:
+                return
+
+            search_term = self.term_entry.get().strip() or 'IntelX Export'
+            filepath = exports_module.generate_pdf_report(records_to_export, title=search_term)
+            ui_components.show_export_success_dialog(self, filepath)
+            return filepath
+        except Exception as e:
+            logger.exception('Error exporting PDF')
+            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando PDF: {e}', 'error')
 
     def export_to_csv_safe(self):
         """Exportar a CSV usando módulo de exportación"""
