@@ -555,8 +555,8 @@ class StyleGenerator:
         body {
             font-family: 'Segoe UI', 'SF Pro Display', system-ui, -apple-system, sans-serif;
             line-height: 1.6;
-            color: #1f2937;
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            color: #f3f4f6;
+            background: radial-gradient(circle at 20% 20%, #1e1b4b 0%, #0f172a 100%);
             min-height: 100vh;
         }
 
@@ -567,14 +567,17 @@ class StyleGenerator:
             padding: 2rem;
         }
 
-        /* Header */
+        /* Glassmorphism Header */
         .header {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            background: rgba(99, 102, 241, 0.25);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
             color: white;
             padding: 3rem 2rem;
-            border-radius: 1rem;
+            border-radius: 1.25rem;
             margin-bottom: 2rem;
-            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
         }
 
         .header h1 {
@@ -617,24 +620,28 @@ class StyleGenerator:
             margin-bottom: 2rem;
         }
 
+        /* Glassmorphism KPI Card */
         .kpi-card {
-            background: white;
+            background: rgba(255, 255, 255, 0.07);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             padding: 1.5rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            border: 1px solid #e5e7eb;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
         }
 
         .kpi-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1);
+            transform: translateY(-4px);
+            background: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 12px 40px 0 rgba(99, 102, 241, 0.25);
         }
 
         .kpi-label {
             font-size: 0.875rem;
             font-weight: 600;
-            color: #6b7280;
+            color: #9ca3af;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             margin-bottom: 0.5rem;
@@ -643,7 +650,7 @@ class StyleGenerator:
         .kpi-value {
             font-size: 2rem;
             font-weight: 700;
-            color: #1f2937;
+            color: #ffffff;
         }
 
         .kpi-change {
@@ -654,20 +661,22 @@ class StyleGenerator:
         .kpi-change.positive { color: #059669; }
         .kpi-change.negative { color: #dc2626; }
 
-        /* Charts section */
+        /* Glassmorphism Charts section */
         .charts-section {
-            background: white;
-            border-radius: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-radius: 1.25rem;
             padding: 2rem;
             margin-bottom: 2rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            border: 1px solid #e5e7eb;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.12);
         }
 
         .section-title {
             font-size: 1.5rem;
             font-weight: 700;
-            color: #1f2937;
+            color: #f3f4f6;
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;

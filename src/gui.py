@@ -198,12 +198,24 @@ class IntelXCheckerApp(ctk.CTk):
     
     def _setup_ui(self):
         """Configurar interfaz de usuario"""
-        # Frame principal
-        main_frame = ctk.CTkFrame(self)
+        # Configurar grid principal con estética Glassmorphism / Frosted Card
+        main_frame = ctk.CTkFrame(
+            self,
+            fg_color=("#f0f4f8", "#1e1e2e"),
+            border_color=("#d0d7de", "#313244"),
+            border_width=1,
+            corner_radius=16
+        )
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Frame de búsqueda
-        search_frame = ctk.CTkFrame(main_frame)
+        search_frame = ctk.CTkFrame(
+            main_frame,
+            fg_color=("#ffffff", "#28293d"),
+            border_color=("#e1e5ea", "#3e405b"),
+            border_width=1,
+            corner_radius=12
+        )
         search_frame.pack(fill="x", padx=10, pady=(10, 5))
         
         # Label y entry para término de búsqueda
@@ -223,7 +235,13 @@ class IntelXCheckerApp(ctk.CTk):
         self.cancel_button.configure(state="disabled")
         
         # Frame de filtros
-        filter_frame = ctk.CTkFrame(main_frame)
+        filter_frame = ctk.CTkFrame(
+            main_frame,
+            fg_color=("#ffffff", "#28293d"),
+            border_color=("#e1e5ea", "#3e405b"),
+            border_width=1,
+            corner_radius=12
+        )
         filter_frame.pack(fill="x", padx=10, pady=5)
         
         self.filter_entry = ctk.CTkEntry(filter_frame, placeholder_text="Filtrar resultados...", font=self.fonts["secondary"])
@@ -235,7 +253,13 @@ class IntelXCheckerApp(ctk.CTk):
         self.credits_label.pack(side="right", padx=(5, 10))
         
         # Frame de resultados
-        results_frame = ctk.CTkFrame(main_frame)
+        results_frame = ctk.CTkFrame(
+            main_frame,
+            fg_color=("#ffffff", "#28293d"),
+            border_color=("#e1e5ea", "#3e405b"),
+            border_width=1,
+            corner_radius=12
+        )
         results_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Treeview para resultados con columnas reordenadas por prioridad
