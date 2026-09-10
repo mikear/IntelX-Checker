@@ -1,4 +1,3 @@
-// Mover a src/generate_report.py
 #!/usr/bin/env python3
 """
 Generador de Reportes SVG - IntelX Checker
@@ -14,7 +13,7 @@ import webbrowser
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
-from intelx.interactive_report import InteractiveReportGenerator
+from interactive_report import InteractiveReportGenerator
 
 def main():
     print("=== IntelX Checker - Generador de Reportes SVG ===")

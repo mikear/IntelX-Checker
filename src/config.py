@@ -1,4 +1,3 @@
-// Mover a src/config.py
 """
 Módulo: config.py
 Configuración de entorno y logging
