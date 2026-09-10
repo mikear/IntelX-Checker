@@ -2,10 +2,6 @@
 Archivo principal: main.py
 Punto de entrada de la aplicación
 """
-"""
-Archivo principal: main.py
-Punto de entrada de la aplicación
-"""
 import logging
 import sys
 from gui import IntelXCheckerApp

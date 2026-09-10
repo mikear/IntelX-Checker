@@ -6,7 +6,7 @@ Generates modern, interactive HTML reports with filtering and visualization capa
 import os
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import List, Dict, Any, Optional, Tuple
 from collections import Counter, OrderedDict
 
@@ -1058,15 +1058,15 @@ class InteractiveReportGenerator:
                        output_filepath: str, 
                        search_term: str) -> str:
         """
-        Generate a complete interactive HTML report.
+        Generate a complete interactive HTML report with embedded SVG charts.
         
         Args:
-            records: List of search result records
-            output_filepath: Path where to save the HTML file
-            search_term: The search term used
+            records: List of search result records.
+            output_filepath: Path where to save the generated HTML file.
+            search_term: The search term queried.
             
         Returns:
-            Path to the generated HTML file
+            Path to the generated HTML file.
         """
         try:
             # Process data
@@ -1096,7 +1096,7 @@ class InteractiveReportGenerator:
                            chart_data: Dict[str, Any], 
                            search_term: str) -> str:
         """Build the complete HTML document."""
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         
         # Build KPI cards
         kpi_cards = self._build_kpi_cards(analysis)

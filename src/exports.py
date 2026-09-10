@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import json
 import csv
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 import logging
 
@@ -36,7 +36,7 @@ def _default_exports_dir(kind: str) -> str:
 
 
 def _timestamped_name(base_name: str) -> str:
-    return f"{base_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}."  # caller appends ext
+    return f"{base_name}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}."  # caller appends ext
 
 
 def export_to_csv(records: List[Dict[str, Any]], filename: Optional[str] = None, exports_dir: Optional[str] = None) -> str:
@@ -125,7 +125,7 @@ def generate_pdf_report(records: List[Dict[str, Any]], title: str = 'IntelX Expo
     if not filename:
         safe_title = ''.join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
         stem = safe_title.replace(' ', '_') or 'IntelX_Export'
-        filename = f'{stem}_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.pdf'
+        filename = f'{stem}_{datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")}.pdf'
     if not filename.lower().endswith('.pdf'):
         filename += '.pdf'
     filepath = os.path.join(exports_dir, filename)
@@ -230,7 +230,7 @@ def export_to_interactive_html(records: List[Dict[str, Any]],
         # Generate filename based on search term and timestamp
         safe_search_term = "".join(c for c in search_term if c.isalnum() or c in (' ', '-', '_')).rstrip()
         if safe_search_term:
-            filename = f"IntelX_Report_{safe_search_term.replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.html"
+            filename = f"IntelX_Report_{safe_search_term.replace(' ', '_')}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.html"
         else:
             filename = _timestamped_name('IntelX_Report') + 'html'
     
