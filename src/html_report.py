@@ -1,7 +1,7 @@
 """HTML Report generation utilities."""
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 from collections import Counter
@@ -194,7 +194,7 @@ def generate_html_report(records: List[Dict[str, Any]], output_filepath: str, se
     parsed_records.sort(key=lambda t: t[0] or _dt.min, reverse=True)
     recent_records = [r for _, r in parsed_records[:100]]
 
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     # JSON para JS
     import json as _json
