@@ -17,13 +17,20 @@ from interactive_report import InteractiveReportGenerator
 def main():
     print("=== Generador de Reporte SVG AMPLIADO ===")
     
-    # Leer datos reales del archivo JSON existente
-    json_file = "reports/json/_at_supbienestar.gob.ar_20250910_213159.json"
+    # Buscar archivos JSON más recientes en la carpeta reports
+    json_files = []
+    for root, dirs, files in os.walk("reports"):
+        for file in files:
+            if file.endswith(".json"):
+                json_files.append(os.path.join(root, file))
     
-    if not os.path.exists(json_file):
-        print(f"❌ No se encontró el archivo: {json_file}")
+    if not json_files:
+        print("❌ No se encontraron archivos JSON de reportes.")
         print("   Ejecuta primero una búsqueda en IntelX para generar datos.")
         return
+
+    # Usar el archivo JSON más reciente
+    json_file = max(json_files, key=os.path.getmtime)
     
     print(f"📂 Cargando datos desde: {json_file}")
     
@@ -34,10 +41,10 @@ def main():
         # El archivo puede ser una lista directa o un diccionario
         if isinstance(data, list):
             records = data
-            search_term = "@supbienestar.gob.ar"  # Usar un término por defecto
+            search_term = os.path.basename(json_file).replace('.json', '').replace('_', ' ')
         else:
             records = data.get('records', [])
-            search_term = data.get('search_term', '@supbienestar.gob.ar')
+            search_term = data.get('search_term', os.path.basename(json_file).replace('.json', ''))
         
         print(f"📊 Registros cargados: {len(records)}")
         print(f"🔍 Término de búsqueda: {search_term}")
