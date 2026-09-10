@@ -1056,7 +1056,8 @@ class InteractiveReportGenerator:
     def generate_report(self, 
                        records: List[Dict[str, Any]], 
                        output_filepath: str, 
-                       search_term: str) -> str:
+                       search_term: str,
+                       lang: str = "es") -> str:
         """
         Generate a complete interactive HTML report with embedded SVG charts.
         
@@ -1074,7 +1075,7 @@ class InteractiveReportGenerator:
             chart_data = self.data_processor.prepare_chart_data(analysis)
             
             # Generate HTML components
-            html_content = self._build_html_document(records, analysis, chart_data, search_term)
+            html_content = self._build_html_document(records, analysis, chart_data, search_term, lang=lang)
             
             # Ensure output directory exists
             os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
@@ -1094,12 +1095,14 @@ class InteractiveReportGenerator:
                            records: List[Dict[str, Any]], 
                            analysis: Dict[str, Any], 
                            chart_data: Dict[str, Any], 
-                           search_term: str) -> str:
+                           search_term: str,
+                           lang: str = "es") -> str:
         """Build the complete HTML document."""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        from config import get_text
         
         # Build KPI cards
-        kpi_cards = self._build_kpi_cards(analysis)
+        kpi_cards = self._build_kpi_cards(analysis, lang=lang)
         
         # Build charts section
         charts_html = self.visualization_generator.generate_charts_html(chart_data)
@@ -1180,20 +1183,21 @@ class InteractiveReportGenerator:
         
         return html
 
-    def _build_kpi_cards(self, analysis: Dict[str, Any]) -> str:
-        """Build KPI cards HTML."""
+    def _build_kpi_cards(self, analysis: Dict[str, Any], lang: str = "es") -> str:
+        """Build KPI cards HTML with localized titles."""
+        from config import get_text
         kpis = analysis['kpis']
         exposure = analysis['exposure_levels']
         
         cards = [
-            ("📝 Total de Registros", f"{analysis['total_results']:,}", ""),
-            ("📊 Fuentes Únicas", f"{analysis['unique_sources']}", ""),
-            ("📄 Documentos Descargables", f"{kpis['downloadable_documents_count']}", ""),
-            ("✅ Metadatos Completos", f"{kpis['complete_metadata_percentage']:.1f}%", ""),
-            ("⚠️ Posibles Leaks", f"{kpis['leaks_percentage']:.1f}%", ""),
-            ("🌐 Exposición Pública", f"{exposure['public']}", ""),
-            ("🔍 Indexados", f"{exposure['indexed']}", ""),
-            ("🔒 Sensibles", f"{exposure['sensitive']}", "")
+            (f"📝 {get_text('total_results', lang)}", f"{analysis['total_results']:,}", ""),
+            (f"📊 {get_text('unique_sources', lang)}", f"{analysis['unique_sources']}", ""),
+            (f"📄 {get_text('downloadable_docs', lang)}", f"{kpis['downloadable_documents_count']}", ""),
+            (f"✅ {get_text('complete_metadata', lang)}", f"{kpis['complete_metadata_percentage']:.1f}%", ""),
+            (f"⚠️ {get_text('possible_leaks', lang)}", f"{kpis['leaks_percentage']:.1f}%", ""),
+            (f"🌐 {get_text('public_exposure', lang)}", f"{exposure['public']}", ""),
+            (f"🔍 {get_text('indexed', lang)}", f"{exposure['indexed']}", ""),
+            (f"🔒 {get_text('sensitive', lang)}", f"{exposure['sensitive']}", "")
         ]
         
         cards_html = []

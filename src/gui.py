@@ -13,6 +13,7 @@ import threading
 import webbrowser
 import os
 from dotenv import load_dotenv, find_dotenv, set_key
+from config import get_stored_api_key, save_stored_api_key
 from datetime import datetime, timezone, MINYEAR, MAXYEAR
 import queue
 import csv
@@ -427,11 +428,10 @@ class IntelXCheckerApp(ctk.CTk):
     def _load_api_config(self):
         """Cargar configuración de API"""
         try:
-            load_dotenv(self.config_file)
-            self.api_key = os.getenv('INTELX_API_KEY', '')
+            self.api_key = get_stored_api_key()
             if self.api_key:
                 self.refresh_credits()
-        except:
+        except Exception:
             self.api_key = ''
     
     def search_intelx(self):
@@ -913,7 +913,7 @@ class IntelXCheckerApp(ctk.CTk):
         if new_key is not None:
             self.api_key = new_key
             try:
-                set_key(self.config_file, 'INTELX_API_KEY', self.api_key)
+                save_stored_api_key(self.api_key, self.config_file)
                 if self.api_key:
                     self.refresh_credits()
             except Exception as e:
