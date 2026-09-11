@@ -556,7 +556,7 @@ class StyleGenerator:
             font-family: 'Segoe UI', 'SF Pro Display', system-ui, -apple-system, sans-serif;
             line-height: 1.6;
             color: #f3f4f6;
-            background: radial-gradient(circle at 20% 20%, #1e1b4b 0%, #0f172a 100%);
+            background: radial-gradient(ellipse at top, #1e1b4b, #0f172a);
             min-height: 100vh;
         }
 
@@ -622,20 +622,20 @@ class StyleGenerator:
 
         /* Glassmorphism KPI Card */
         .kpi-card {
-            background: rgba(255, 255, 255, 0.07);
+            background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             padding: 1.5rem;
             border-radius: 1rem;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.12);
             transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
         }
 
         .kpi-card:hover {
-            transform: translateY(-4px);
+            transform: translateY(-2px);
             background: rgba(255, 255, 255, 0.12);
-            box-shadow: 0 12px 40px 0 rgba(99, 102, 241, 0.25);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.35);
         }
 
         .kpi-label {
@@ -664,12 +664,12 @@ class StyleGenerator:
         /* Glassmorphism Charts section */
         .charts-section {
             background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border-radius: 1.25rem;
             padding: 2rem;
             margin-bottom: 2rem;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.12);
         }
 
