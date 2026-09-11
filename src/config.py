@@ -5,7 +5,14 @@ Configuración de entorno y logging
 import os
 import sys
 import logging
-from dotenv import load_dotenv, find_dotenv
+from typing import Optional
+from dotenv import load_dotenv, find_dotenv, set_key
+
+SERVICE_NAME = "IntelX_Checker"
+API_KEY_NAME = "INTELX_API_KEY"
+
+from i18n import t as get_text, LANGUAGES as TRANSLATIONS
+
 
 # --- Configuración de Logging ---
 logging.basicConfig(
@@ -34,3 +41,6 @@ def load_env():
         logger.exception(f"Error al buscar o cargar el archivo .env: {e}")
         return None
     return True
+
+
+from keyring_storage import get_api_key as get_stored_api_key, set_api_key as save_stored_api_key

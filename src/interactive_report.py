@@ -555,8 +555,8 @@ class StyleGenerator:
         body {
             font-family: 'Segoe UI', 'SF Pro Display', system-ui, -apple-system, sans-serif;
             line-height: 1.6;
-            color: #1f2937;
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            color: #f3f4f6;
+            background: radial-gradient(ellipse at top, #1e1b4b, #0f172a);
             min-height: 100vh;
         }
 
@@ -567,14 +567,17 @@ class StyleGenerator:
             padding: 2rem;
         }
 
-        /* Header */
+        /* Glassmorphism Header */
         .header {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            background: rgba(99, 102, 241, 0.25);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
             color: white;
             padding: 3rem 2rem;
-            border-radius: 1rem;
+            border-radius: 1.25rem;
             margin-bottom: 2rem;
-            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
         }
 
         .header h1 {
@@ -617,24 +620,28 @@ class StyleGenerator:
             margin-bottom: 2rem;
         }
 
+        /* Glassmorphism KPI Card */
         .kpi-card {
-            background: white;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             padding: 1.5rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            border: 1px solid #e5e7eb;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
         }
 
         .kpi-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.35);
         }
 
         .kpi-label {
             font-size: 0.875rem;
             font-weight: 600;
-            color: #6b7280;
+            color: #9ca3af;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             margin-bottom: 0.5rem;
@@ -643,7 +650,7 @@ class StyleGenerator:
         .kpi-value {
             font-size: 2rem;
             font-weight: 700;
-            color: #1f2937;
+            color: #ffffff;
         }
 
         .kpi-change {
@@ -654,20 +661,22 @@ class StyleGenerator:
         .kpi-change.positive { color: #059669; }
         .kpi-change.negative { color: #dc2626; }
 
-        /* Charts section */
+        /* Glassmorphism Charts section */
         .charts-section {
-            background: white;
-            border-radius: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 1.25rem;
             padding: 2rem;
             margin-bottom: 2rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            border: 1px solid #e5e7eb;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.12);
         }
 
         .section-title {
             font-size: 1.5rem;
             font-weight: 700;
-            color: #1f2937;
+            color: #f3f4f6;
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
@@ -1056,7 +1065,8 @@ class InteractiveReportGenerator:
     def generate_report(self, 
                        records: List[Dict[str, Any]], 
                        output_filepath: str, 
-                       search_term: str) -> str:
+                       search_term: str,
+                       lang: str = "es") -> str:
         """
         Generate a complete interactive HTML report with embedded SVG charts.
         
@@ -1074,7 +1084,7 @@ class InteractiveReportGenerator:
             chart_data = self.data_processor.prepare_chart_data(analysis)
             
             # Generate HTML components
-            html_content = self._build_html_document(records, analysis, chart_data, search_term)
+            html_content = self._build_html_document(records, analysis, chart_data, search_term, lang=lang)
             
             # Ensure output directory exists
             os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
@@ -1094,12 +1104,14 @@ class InteractiveReportGenerator:
                            records: List[Dict[str, Any]], 
                            analysis: Dict[str, Any], 
                            chart_data: Dict[str, Any], 
-                           search_term: str) -> str:
+                           search_term: str,
+                           lang: str = "es") -> str:
         """Build the complete HTML document."""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        from config import get_text
         
         # Build KPI cards
-        kpi_cards = self._build_kpi_cards(analysis)
+        kpi_cards = self._build_kpi_cards(analysis, lang=lang)
         
         # Build charts section
         charts_html = self.visualization_generator.generate_charts_html(chart_data)
@@ -1180,20 +1192,21 @@ class InteractiveReportGenerator:
         
         return html
 
-    def _build_kpi_cards(self, analysis: Dict[str, Any]) -> str:
-        """Build KPI cards HTML."""
+    def _build_kpi_cards(self, analysis: Dict[str, Any], lang: str = "es") -> str:
+        """Build KPI cards HTML with localized titles."""
+        from config import get_text
         kpis = analysis['kpis']
         exposure = analysis['exposure_levels']
         
         cards = [
-            ("📝 Total de Registros", f"{analysis['total_results']:,}", ""),
-            ("📊 Fuentes Únicas", f"{analysis['unique_sources']}", ""),
-            ("📄 Documentos Descargables", f"{kpis['downloadable_documents_count']}", ""),
-            ("✅ Metadatos Completos", f"{kpis['complete_metadata_percentage']:.1f}%", ""),
-            ("⚠️ Posibles Leaks", f"{kpis['leaks_percentage']:.1f}%", ""),
-            ("🌐 Exposición Pública", f"{exposure['public']}", ""),
-            ("🔍 Indexados", f"{exposure['indexed']}", ""),
-            ("🔒 Sensibles", f"{exposure['sensitive']}", "")
+            (f"📝 {get_text('total_results', lang)}", f"{analysis['total_results']:,}", ""),
+            (f"📊 {get_text('unique_sources', lang)}", f"{analysis['unique_sources']}", ""),
+            (f"📄 {get_text('downloadable_docs', lang)}", f"{kpis['downloadable_documents_count']}", ""),
+            (f"✅ {get_text('complete_metadata', lang)}", f"{kpis['complete_metadata_percentage']:.1f}%", ""),
+            (f"⚠️ {get_text('possible_leaks', lang)}", f"{kpis['leaks_percentage']:.1f}%", ""),
+            (f"🌐 {get_text('public_exposure', lang)}", f"{exposure['public']}", ""),
+            (f"🔍 {get_text('indexed', lang)}", f"{exposure['indexed']}", ""),
+            (f"🔒 {get_text('sensitive', lang)}", f"{exposure['sensitive']}", "")
         ]
         
         cards_html = []
