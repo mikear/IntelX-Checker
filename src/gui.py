@@ -14,6 +14,7 @@ import webbrowser
 import os
 from dotenv import load_dotenv, find_dotenv, set_key
 from config import get_stored_api_key, save_stored_api_key
+from i18n import LANGUAGES, t
 from datetime import datetime, timezone, MINYEAR, MAXYEAR
 import queue
 import csv
@@ -83,64 +84,7 @@ class IntelXCheckerApp(ctk.CTk):
         
         # --- Multilenguaje ---
         self.current_language = self._load_saved_language()
-        self.languages = {
-            "es": {
-                "Correo o Dominio": "Correo o Dominio:",
-                "Buscar": "Buscar",
-                "Cancelar": "Cancelar",
-                "Listo": "Listo.",
-                "Filtrar resultados": "Filtrar resultados...",
-                "Créditos": "Créditos:",
-                "Archivo": "Archivo",
-                "Exportar a CSV": "Exportar a CSV...",
-                "Exportar a JSON": "Exportar a JSON...",
-                # "Exportar a PDF": "Exportar a PDF...",
-                "Exportar a HTML": "Exportar a HTML...",
-                "Vista Previa": "Vista Previa",
-                "Seleccionar Todo": "Seleccionar Todo",
-                "Deseleccionar": "Deseleccionar",
-                "Copiar": "Copiar",
-                "Exportar Selección": "Exportar Selección",
-                "Refrescar": "Refrescar",
-                "Ajustar Columnas": "Ajustar Columnas",
-                "Salir": "Salir",
-                "Configuración": "Configuración",
-                "Gestionar Clave API": "Gestionar Clave API...",
-                "Fuentes de Búsqueda": "Fuentes de Búsqueda (Buckets)...",
-                "Ayuda": "Ayuda",
-                "Refrescar Créditos": "Refrescar Créditos",
-                "Obtener Clave API": "Obtener Clave API de IntelX",
-                "Acerca de": "Acerca de"
-            },
-            "en": {
-                "Correo o Dominio": "Email or Domain:",
-                "Buscar": "Search",
-                "Cancelar": "Cancel",
-                "Listo": "Done.",
-                "Filtrar resultados": "Filter results...",
-                "Créditos": "Credits:",
-                "Archivo": "File",
-                "Exportar a CSV": "Export to CSV...",
-                "Exportar a JSON": "Export to JSON...",
-                # "Exportar a PDF": "Export to PDF...",
-                "Exportar a HTML": "Export to HTML...",
-                "Vista Previa": "Preview",
-                "Seleccionar Todo": "Select All",
-                "Deseleccionar": "Deselect",
-                "Copiar": "Copy",
-                "Exportar Selección": "Export Selection",
-                "Refrescar": "Refresh",
-                "Ajustar Columnas": "Adjust Columns",
-                "Salir": "Exit",
-                "Configuración": "Settings",
-                "Gestionar Clave API": "Manage API Key...",
-                "Fuentes de Búsqueda": "Search Sources (Buckets)...",
-                "Ayuda": "Help",
-                "Refrescar Créditos": "Refresh Credits",
-                "Obtener Clave API": "Get IntelX API Key",
-                "Acerca de": "About"
-            }
-        }
+        self.languages = LANGUAGES
         
         # Inicializar variables
         self.current_records = []
@@ -201,8 +145,8 @@ class IntelXCheckerApp(ctk.CTk):
         # Configurar grid principal con estética Glassmorphism / Frosted Card
         main_frame = ctk.CTkFrame(
             self,
-            fg_color=("#f0f4f8", "#1e1e2e"),
-            border_color=("#d0d7de", "#313244"),
+            fg_color=("gray86", "gray17"),
+            border_color=("#e1e5ea", "#3e405b"),
             border_width=1,
             corner_radius=16
         )
@@ -211,7 +155,7 @@ class IntelXCheckerApp(ctk.CTk):
         # Frame de búsqueda
         search_frame = ctk.CTkFrame(
             main_frame,
-            fg_color=("#ffffff", "#28293d"),
+            fg_color=("gray86", "gray17"),
             border_color=("#e1e5ea", "#3e405b"),
             border_width=1,
             corner_radius=12
@@ -237,7 +181,7 @@ class IntelXCheckerApp(ctk.CTk):
         # Frame de filtros
         filter_frame = ctk.CTkFrame(
             main_frame,
-            fg_color=("#ffffff", "#28293d"),
+            fg_color=("gray86", "gray17"),
             border_color=("#e1e5ea", "#3e405b"),
             border_width=1,
             corner_radius=12
@@ -255,7 +199,7 @@ class IntelXCheckerApp(ctk.CTk):
         # Frame de resultados
         results_frame = ctk.CTkFrame(
             main_frame,
-            fg_color=("#ffffff", "#28293d"),
+            fg_color=("gray86", "gray17"),
             border_color=("#e1e5ea", "#3e405b"),
             border_width=1,
             corner_radius=12
@@ -308,7 +252,13 @@ class IntelXCheckerApp(ctk.CTk):
         self.results_tree.bind("<Button-3>", self.show_context_menu)
         
         # Status bar con barra de progreso
-        status_frame = ctk.CTkFrame(main_frame)
+        status_frame = ctk.CTkFrame(
+            main_frame,
+            fg_color=("gray86", "gray17"),
+            border_color=("#e1e5ea", "#3e405b"),
+            border_width=1,
+            corner_radius=12
+        )
         status_frame.pack(fill="x", padx=10, pady=(5, 10))
         
         self.status_label = ctk.CTkLabel(status_frame, text="Listo.", font=self.fonts["tertiary"])

@@ -4,8 +4,8 @@ from config import get_text, get_stored_api_key, save_stored_api_key
 
 class TestConfig(unittest.TestCase):
     def test_get_text_translations(self):
-        self.assertEqual(get_text("search_btn", "es"), "Buscar")
-        self.assertEqual(get_text("search_btn", "en"), "Search")
+        self.assertEqual(get_text("Buscar", "es"), "Buscar")
+        self.assertEqual(get_text("Buscar", "en"), "Search")
         self.assertEqual(get_text("non_existent_key", "es"), "non_existent_key")
 
     @patch("keyring.get_password")
