@@ -680,6 +680,10 @@ class IntelXCheckerApp(ctk.CTk):
             self.after(0, self._populate_results)
             return
 
+        # Limpiar treeview antes de repoblar con los registros acumulados
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
+
         for i, record in enumerate(self.current_records):
             if self.stop_search:
                 break
