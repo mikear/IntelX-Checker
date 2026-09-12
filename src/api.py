@@ -11,7 +11,7 @@ from datetime import datetime, timezone, MINYEAR, MAXYEAR
 from typing import Optional, Tuple, List, Dict, Any, Union
 
 # --- Constantes API ---
-INTELX_API_URL_BASE = "https://2.intelx.io"
+INTELX_API_URL_BASE = "https://free.intelx.io"
 INTELX_API_URL_SEARCH = f"{INTELX_API_URL_BASE}/intelligent/search"
 INTELX_API_URL_RESULT = f"{INTELX_API_URL_BASE}/intelligent/search/result"
 INTELX_API_URL_STATUS = f"{INTELX_API_URL_BASE}/intelligent/search/status"

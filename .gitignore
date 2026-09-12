@@ -15,6 +15,9 @@ exports/*
 # Mantener la carpeta de reportes, pero nunca sus datos generados.
 reports/*
 !reports/.gitkeep
+
+# Datos locales de historial (acumulación de resultados)
+data/
 intelx/gui_backup_*.py
 
 # Archivos temporales

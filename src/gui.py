@@ -46,7 +46,7 @@ except ImportError:
 from api import check_intelx, retrieve_intelx_results, get_api_credits, MEDIA_TYPE_MAP, INTELX_API_URL_AUTH_INFO, INTELX_API_URL_TERMINATE, INTELX_API_URL_FILE_PREVIEW, USER_AGENT, REQUEST_TIMEOUT_AUTH, REQUEST_TIMEOUT_TERMINATE, REQUEST_TIMEOUT_PREVIEW, INTELX_RATE_LIMIT_DELAY, DEFAULT_DATE_MIN, DEFAULT_DATE_MAX
 from analysis import analyze_results_for_report, extract_iocs, clean_data_for_mandiant_report, prepare_mandiant_chart_data
 from reporting import generate_modern_html_content, generate_executive_summary_html, generate_iocs_html, generate_data_table_html
-from utils import sanitize_filename, open_in_browser
+from utils import sanitize_filename, open_in_browser, load_history, save_history, merge_records
 import exports as exports_module
 import ui_components
 
@@ -114,7 +114,7 @@ class IntelXCheckerApp(ctk.CTk):
         self.languages = LANGUAGES
         
         # Inicializar variables
-        self.current_records = []
+        self.current_records = load_history()
         self.credits = 0
         self.search_thread = None
         self.stop_search = False
@@ -128,6 +128,10 @@ class IntelXCheckerApp(ctk.CTk):
         
         # Cargar configuración
         self._load_api_config()
+        
+        # Poblar treeview con historial cargado si existe
+        if self.current_records:
+            self.after(100, self._populate_results)
         
     def _set_application_icon(self):
         """Configurar icono de la aplicación"""
@@ -422,6 +426,8 @@ class IntelXCheckerApp(ctk.CTk):
         file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf_safe)
         file_menu.add_command(label="Exportar a HTML...", command=self.export_to_html_safe)
         file_menu.add_separator()
+        file_menu.add_command(label="Limpiar Historial", command=self._clear_history)
+        file_menu.add_separator()
         file_menu.add_command(label="Salir", command=self.quit)
         
         # Menú Configuración
@@ -477,6 +483,23 @@ class IntelXCheckerApp(ctk.CTk):
         
         # Alternar el orden para el próximo clic
         self.results_tree.heading(col, command=lambda c=col: self._sort_treeview_by_column(c, not reverse))
+
+    def _clear_history(self):
+        """Limpiar todo el historial de resultados"""
+        if not ui_components.show_custom_question_dialog(
+            self, "Limpiar Historial",
+            "¿Está seguro de que desea eliminar todo el historial de resultados? Esta acción no se puede deshacer."
+        ):
+            return
+        
+        self.current_records = []
+        save_history([])
+        
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
+        
+        if hasattr(self, "status_label"):
+            self.status_label.configure(text="Historial limpiado")
 
     def _set_language(self, lang):
         """Cambiar idioma"""
@@ -554,11 +577,9 @@ class IntelXCheckerApp(ctk.CTk):
         # Actualizar créditos antes de iniciar la búsqueda
         self.refresh_credits()
         
-        # Limpiar resultados anteriores
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
+        # Recordar cantidad de registros existentes para acumular después
+        self._existing_count_before_search = len(self.current_records)
         
-        self.current_records = []
         self.stop_search = False
         self.cancel_event = threading.Event()
         
@@ -603,16 +624,20 @@ class IntelXCheckerApp(ctk.CTk):
                 if hasattr(self, "status_label"):
                     self.after(0, lambda: self.status_label.configure(text="Procesando resultados..."))
                 
-                # Si data es un dict con 'records', usar esos registros
+                # Extraer nuevos registros del resultado
+                new_records = []
                 if isinstance(data_or_error, dict) and 'records' in data_or_error:
-                    self.current_records = data_or_error['records']
+                    new_records = data_or_error['records']
                 elif isinstance(data_or_error, list):
-                    self.current_records = data_or_error
+                    new_records = data_or_error
                 elif isinstance(data_or_error, dict):
-                    # Asumir que es el resultado directo
-                    self.current_records = [data_or_error]
-                else:
-                    self.current_records = []
+                    new_records = [data_or_error]
+                
+                # Fusionar con registros existentes (deduplicando)
+                self.current_records = merge_records(self.current_records, new_records)
+                
+                # Guardar historial completo
+                save_history(self.current_records)
                 
                 # Progreso final
                 if hasattr(self, "progress_bar"):
