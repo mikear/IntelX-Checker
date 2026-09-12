@@ -52,5 +52,17 @@ class TestExports(unittest.TestCase):
             res = export_to_interactive_html(self.sample_records, out_file, search_term="test_query")
             self.assertTrue(os.path.exists(res))
 
+    def test_export_sanitized_filenames(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res_csv = export_to_csv(self.sample_records, filename="user@domain.com/test", exports_dir=tmpdir)
+            self.assertTrue(os.path.exists(res_csv))
+            self.assertIn("user_at_domain_dot_comtest", os.path.basename(res_csv))
+            self.assertTrue(res_csv.endswith(".csv"))
+
+            res_json = export_to_json(self.sample_records, filename="user@domain.com/test", exports_dir=tmpdir)
+            self.assertTrue(os.path.exists(res_json))
+            self.assertIn("user_at_domain_dot_comtest", os.path.basename(res_json))
+            self.assertTrue(res_json.endswith(".json"))
+
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional
 import logging
 
 from interactive_report import generate_interactive_html_report
+from utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +44,22 @@ def export_to_csv(records: List[Dict[str, Any]], filename: Optional[str] = None,
     """Export records to CSV. Returns the file path.
 
     If filename is not provided a timestamped name will be generated.
+    If filename is provided as a search term or custom name, it is sanitized
+    and formatted with proper extension.
     """
     if exports_dir is None:
         exports_dir = _default_exports_dir('csv')
 
     if not filename:
         filename = _timestamped_name('intelx_export') + 'csv'
+    else:
+        if not filename.lower().endswith('.csv'):
+            stem = sanitize_filename(filename)
+            filename = f"{stem}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+        else:
+            stem = sanitize_filename(filename[:-4])
+            filename = f"{stem}.csv"
+
     filepath = os.path.join(exports_dir, filename)
 
     try:
@@ -82,6 +93,14 @@ def export_to_json(records: List[Dict[str, Any]], filename: Optional[str] = None
 
     if not filename:
         filename = _timestamped_name('intelx_export') + 'json'
+    else:
+        if not filename.lower().endswith('.json'):
+            stem = sanitize_filename(filename)
+            filename = f"{stem}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+        else:
+            stem = sanitize_filename(filename[:-5])
+            filename = f"{stem}.json"
+
     filepath = os.path.join(exports_dir, filename)
 
     try:

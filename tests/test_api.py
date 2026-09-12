@@ -50,5 +50,12 @@ class TestAPI(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(credits, 150)
 
+    def test_check_intelx_cancellation(self):
+        cancel_evt = threading.Event()
+        cancel_evt.set()
+        success, err, sid = check_intelx("domain.com", "valid_key", cancel_event=cancel_evt)
+        self.assertFalse(success)
+        self.assertIn("cancelada", err.lower())
+
 if __name__ == "__main__":
     unittest.main()
