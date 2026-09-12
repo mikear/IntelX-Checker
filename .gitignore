@@ -3,32 +3,50 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+dist/
+build/
+*.egg
 
-# Entorno
+# Entorno y secretos
 .env
+.env.*
+!.env.example
 
-# Exportaciones y backups
-exports/csv/*.csv
-exports/*
-/offline_report.html
-
-# Mantener la carpeta de reportes, pero nunca sus datos generados.
-reports/*
-!reports/.gitkeep
-
-# Datos locales de historial (acumulación de resultados)
+# Datos locales (historial de resultados)
 data/
-intelx/gui_backup_*.py
 
-# Archivos temporales
+# Exportaciones generadas
+exports/
+
+# Reportes generados
+reports/
+
+# Logs
 *.log
-*.tmp
 
-# IDE/OS
+# Documentación de desarrollo (no esencial para correr la app)
+RELEASE_V2.1.md
+REPORTE_SVG_FINAL.md
+IMPLEMENTATION_SUMMARY.md
+README_INTERACTIVE_REPORTS.md
+
+# Iconos / assets pesados
+docs/icon.ico
+docs/icon.png
+
+# IDE / OS
 .vscode/
+.idea/
 *.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+Desktop.ini
+*.lnk
 
-# Otros
-# Puedes agregar aquí otros archivos o carpetas que no quieras versionar
+# Archivos temporales
+*.tmp
+*.bak
+*.orig

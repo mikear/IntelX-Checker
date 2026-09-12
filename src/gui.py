@@ -1,54 +1,41 @@
 """
 Módulo: gui.py
-Interfaz gráfica principal usando CustomTkinter y Tkinter
-Versión modular que mantiene toda la funcionalidad original
+Interfaz gráfica principal usando PySide6 (Qt)
+Diseño inspirado en IP-Analyzer: Tailwind blue palette, KPI cards, dark log console
 """
-import customtkinter as ctk
-import tkinter as tk
-from tkinter import messagebox, Menu, filedialog, ttk
-import requests
-import json
-import time
+import sys
+import os
+import re
+import logging
 import threading
 import webbrowser
-import os
-from dotenv import load_dotenv, find_dotenv, set_key
+
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QFrame, QGroupBox, QLabel, QLineEdit, QPushButton,
+    QProgressBar, QTableWidget, QTableWidgetItem,
+    QHeaderView, QAbstractItemView, QSplitter, QTextEdit,
+    QMenu, QMessageBox, QDialog, QStatusBar
+)
+from PySide6.QtCore import (
+    Qt, QThread, QObject, Signal, Slot, QTimer
+)
+from PySide6.QtGui import (
+    QFont, QColor, QAction, QIcon
+)
+
+try:
+    import qtawesome as qta
+    ICONS_AVAILABLE = True
+except ImportError:
+    ICONS_AVAILABLE = False
+    print("ADVERTENCIA: qtawesome no instalado. Los iconos no estarán disponibles.")
+
 from config import get_stored_api_key, save_stored_api_key
 from i18n import LANGUAGES, t
-from datetime import datetime, timezone, MINYEAR, MAXYEAR
-import queue
-import csv
-import logging
-import sys
-import io
-from collections import Counter
-from typing import Optional, Tuple, List, Dict, Any, Union
-try:
-    from PIL import Image, ImageTk
-except ImportError:
-    _pillow_warning_root = None
-    try:
-        _pillow_warning_root = tk.Tk()
-        _pillow_warning_root.withdraw()
-        messagebox.showwarning(
-            "Dependencia Faltante",
-            "Pillow no está instalado.\nLa vista previa de imágenes no funcionará.\n\nInstálalo ejecutando:\npip install Pillow"
-        )
-    except tk.TclError:
-        print("ADVERTENCIA: Pillow no está instalado y no se pudo mostrar el messagebox (quizás no hay entorno gráfico disponible).")
-    finally:
-        if _pillow_warning_root:
-            _pillow_warning_root.destroy()
-    Image = None
-    ImageTk = None
-
-# Imports de módulos propios
-from api import check_intelx, retrieve_intelx_results, get_api_credits, MEDIA_TYPE_MAP, INTELX_API_URL_AUTH_INFO, INTELX_API_URL_TERMINATE, INTELX_API_URL_FILE_PREVIEW, USER_AGENT, REQUEST_TIMEOUT_AUTH, REQUEST_TIMEOUT_TERMINATE, REQUEST_TIMEOUT_PREVIEW, INTELX_RATE_LIMIT_DELAY, DEFAULT_DATE_MIN, DEFAULT_DATE_MAX
-from analysis import analyze_results_for_report, extract_iocs, clean_data_for_mandiant_report, prepare_mandiant_chart_data
-from reporting import generate_modern_html_content, generate_executive_summary_html, generate_iocs_html, generate_data_table_html
-from utils import sanitize_filename, open_in_browser, load_history, save_history, merge_records
+from api import check_intelx, get_api_credits, MEDIA_TYPE_MAP
+from utils import open_in_browser, load_history, save_history, merge_records
 import exports as exports_module
-import ui_components
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -56,575 +43,125 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ctk.set_default_color_theme("blue")
+# --- Tailwind Blue Color Palette (matching IP-Analyzer) ---
+COLORS = {
+    "bg_main": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "border": "#E2E8F0",
+    "border_hover": "#CBD5E1",
+    "primary": "#2563EB",
+    "primary_hover": "#1D4ED8",
+    "primary_light": "#DBEAFE",
+    "primary_text": "#1E3A8A",
+    "text_heading": "#0F172A",
+    "text_body": "#334155",
+    "text_muted": "#475569",
+    "text_subtle": "#64748B",
+    "text_disabled": "#94A3B8",
+    "success_bg": "#DCFCE7",
+    "success_text": "#166534",
+    "warning_bg": "#FEF9C3",
+    "warning_text": "#854D0E",
+    "error_bg": "#FEE2E2",
+    "error_text": "#991B1B",
+    "private_bg": "#E0E7FF",
+    "private_text": "#3730A3",
+    "log_bg": "#0F172A",
+    "log_text": "#F8FAFC",
+    "log_warning": "#FBBF24",
+    "log_error": "#F87171",
+    "log_debug": "#94A3B8",
+    "progress_bg": "#F1F5F9",
+    "progress_chunk": "#3B82F6",
+    "table_header_bg": "#F1F5F9",
+    "table_alt_row": "#F8FAFC",
+    "table_selection_bg": "#DBEAFE",
+    "table_selection_text": "#1E3A8A",
+}
 
-class IntelXCheckerApp(ctk.CTk):
+# --- Icon initialization ---
+ICONS = {}
+
+def init_icons():
+    """Initialize qtawesome icons. Call after QApplication construction."""
+    global ICONS
+    if not ICONS_AVAILABLE:
+        return
+    icon_color = "#475569"
+    icon_blue = "#3B82F6"
+    white = "#FFFFFF"
+    ICONS = {
+        'search': qta.icon('fa5s.search', color=white),
+        'times': qta.icon('fa5s.times', color=white),
+        'key': qta.icon('fa5s.key', color=icon_color),
+        'key_blue': qta.icon('fa5s.key', color=icon_blue),
+        'globe': qta.icon('fa5s.globe', color=icon_blue),
+        'building': qta.icon('fa5s.building', color=icon_blue),
+        'lock': qta.icon('fa5s.lock', color=icon_blue),
+        'database': qta.icon('fa5s.database', color=icon_blue),
+        'file_export': qta.icon('fa5s.file-export', color=icon_color),
+        'clipboard': qta.icon('fa5s.clipboard-list', color=icon_color),
+        'info': qta.icon('fa5s.info-circle', color=icon_color),
+        'sync': qta.icon('fa5s.sync', color=icon_color),
+        'folder_open': qta.icon('fa5s.folder-open', color=icon_blue),
+        'file': qta.icon('fa5s.file', color=icon_blue),
+        'check': qta.icon('fa5s.check-circle', color='#22c55e'),
+        'exclamation': qta.icon('fa5s.exclamation-triangle', color='#f59e0b'),
+        'play': qta.icon('fa5s.play', color=white),
+        'stop': qta.icon('fa5s.stop', color=white),
+        'trash': qta.icon('fa5s.trash', color=icon_color),
+        'copy': qta.icon('fa5s.copy', color=icon_color),
+        'eye': qta.icon('fa5s.eye', color=icon_color),
+        'sign_out': qta.icon('fa5s.sign-out-alt', color=icon_color),
+    }
+
+
+# --- Qt Log Handler ---
+class QtLogHandler(QObject, logging.Handler):
+    """Routes Python logging records to the Qt log console via signal."""
+    log_message = Signal(str, str)
+
     def __init__(self):
-        super().__init__()
-        self.preview_windows = {}
-        self.title("IntelX Checker V2")
-        self.geometry("1020x700")
-        self.minsize(700, 500)
-        self.current_language = "es"
-        self.app_version = "2.0.0"
+        QObject.__init__(self)
+        logging.Handler.__init__(self)
 
-        # Paleta de colores comercial estilo Dashlane / 1Password / Notion
-        self.colors = {
-            "accent": "#6366f1",
-            "accent_hover": "#4f46e5",
-            "accent_light": "#818cf8",
-            "danger": "#ef4444",
-            "danger_hover": "#dc2626",
-            "success": "#22c55e",
-            "bg_main": ("#f8fafc", "#0f172a"),
-            "card": ("#ffffff", "#1e293b"),
-            "card_hover": ("#f1f5f9", "#273548"),
-            "border": ("#e2e8f0", "#334155"),
-            "text_primary": ("#1e293b", "#f1f5f9"),
-            "text_secondary": ("#64748b", "#94a3b8"),
-            "entry_bg": ("#ffffff", "#1e293b"),
-            "entry_border": ("#cbd5e1", "#475569"),
-            "entry_border_focus": ("#6366f1", "#818cf8"),
-        }
-
-        self.configure(fg_color=self.colors["bg_main"])
-        self.option_add("*CTkEntry*.placeholder*foreground", "#94a3b8")
-        
-        # Configurar icono de la aplicación
-        self._set_application_icon()
-        
-        # --- Fuentes con Segoe UI ---
-        self.fonts = {
-            "title": ("Segoe UI", 20, "bold"),
-            "main": ("Segoe UI", 13),
-            "main_bold": ("Segoe UI", 13, "bold"),
-            "button": ("Segoe UI", 13, "bold"),
-            "menu": ("Segoe UI", 11),
-            "secondary": ("Segoe UI", 11),
-            "tertiary": ("Segoe UI", 10),
-            "entry": ("Segoe UI", 13),
-            "tree_content": ("Segoe UI", 11),
-            "tree_header": ("Segoe UI", 11, "bold"),
-            "dialog_header": ("Segoe UI", 13, "bold"),
-            "dialog_body": ("Segoe UI", 11)
-        }
-        
-        # --- Multilenguaje ---
-        self.current_language = self._load_saved_language()
-        self.languages = LANGUAGES
-        
-        # Inicializar variables
-        self.current_records = load_history()
-        self.credits = 0
-        self.search_thread = None
-        self.stop_search = False
-        self.cancel_event = None
-        self.config_file = os.path.join(os.path.dirname(__file__), '..', '.env')
-        
-        # Crear UI
-        self._setup_ui()
-        self._setup_menus()
-        self._update_language()
-        
-        # Cargar configuración
-        self._load_api_config()
-        
-        # Poblar treeview con historial cargado si existe
-        if self.current_records:
-            self.after(100, self._populate_results)
-        
-    def _set_application_icon(self):
-        """Configurar icono de la aplicación"""
+    def emit(self, record):
         try:
-            # Buscar archivo de icono
-            icon_paths = [
-                os.path.join(os.path.dirname(__file__), '..', 'docs', 'icon.ico'),
-                os.path.join(os.path.dirname(__file__), '..', 'docs', 'icon.png'),
-                os.path.join(os.path.dirname(__file__), 'icon.ico'),
-                os.path.join(os.path.dirname(__file__), 'icon.png')
-            ]
-            
-            for icon_path in icon_paths:
-                if os.path.exists(icon_path):
-                    if icon_path.endswith('.ico'):
-                        self.iconbitmap(icon_path)
-                        break
-                    elif icon_path.endswith('.png') and Image and ImageTk:
-                        # Usar PIL para cargar PNG si está disponible
-                        img = Image.open(icon_path)
-                        img = img.resize((32, 32), Image.Resampling.LANCZOS)
-                        photo = ImageTk.PhotoImage(img)
-                        self.iconphoto(True, photo)
-                        # Mantener referencia para evitar garbage collection
-                        self._icon_photo = photo
-                        break
-        except Exception as e:
-            logger.debug(f"No se pudo cargar el icono: {e}")
-        
-    def _load_saved_language(self):
-        """Carga el idioma guardado"""
-        try:
-            if os.path.exists(self.config_file):
-                load_dotenv(self.config_file)
-                return os.getenv('LANGUAGE', 'es')
-        except:
-            pass
-        return 'es'
-    
-    def _setup_ui(self):
-        """Configurar interfaz de usuario"""
-        # Contenedor raíz sin corner_radius para el layout principal
-        main_frame = ctk.CTkFrame(
-            self,
-            fg_color=self.colors["bg_main"],
-            corner_radius=0
-        )
-        main_frame.pack(fill="both", expand=True, padx=15, pady=15)
-        
-        # Frame de búsqueda (Hero section)
-        search_frame = ctk.CTkFrame(
-            main_frame,
-            fg_color=self.colors["card"],
-            border_color=self.colors["border"],
-            border_width=1,
-            corner_radius=16
-        )
-        search_frame.pack(fill="x", padx=0, pady=(0, 10), ipady=8)
-        
-        self.search_label = ctk.CTkLabel(
-            search_frame,
-            text="Correo o Dominio:",
-            font=self.fonts["main_bold"],
-            text_color=self.colors["text_primary"]
-        )
-        self.search_label.pack(side="left", padx=(15, 8))
-        
-        self.term_entry = ctk.CTkEntry(
-            search_frame,
-            height=44,
-            corner_radius=22,
-            border_width=2,
-            border_color=self.colors["entry_border"],
-            fg_color=self.colors["entry_bg"],
-            font=self.fonts["entry"],
-            placeholder_text="🔍  Buscar email o dominio..."
-        )
-        self.term_entry.pack(side="left", padx=5, expand=True, fill="x")
-        self.term_entry.bind("<Return>", lambda e: self.search_intelx())
-        self.term_entry.bind("<FocusIn>", lambda e: self.term_entry.configure(border_color=self.colors["entry_border_focus"]))
-        self.term_entry.bind("<FocusOut>", lambda e: self.term_entry.configure(border_color=self.colors["entry_border"]))
-
-        self.search_button = ctk.CTkButton(
-            search_frame,
-            text="🔍  Buscar",
-            command=self.search_intelx,
-            fg_color=self.colors["accent"],
-            hover_color=self.colors["accent_hover"],
-            corner_radius=22,
-            height=44,
-            width=150,
-            font=self.fonts["button"],
-            text_color="white"
-        )
-        self.search_button.pack(side="right", padx=(5, 15))
-        
-        self.cancel_button = ctk.CTkButton(
-            search_frame,
-            text="✕  Cancelar",
-            command=self.cancel_search,
-            fg_color=self.colors["danger"],
-            hover_color=self.colors["danger_hover"],
-            corner_radius=22,
-            height=44,
-            width=150,
-            font=self.fonts["button"],
-            text_color="white"
-        )
-        self.cancel_button.pack(side="right", padx=5)
-        self.cancel_button.configure(state="disabled")
-        
-        # Frame de filtros
-        filter_frame = ctk.CTkFrame(
-            main_frame,
-            fg_color=self.colors["card"],
-            border_color=self.colors["border"],
-            border_width=1,
-            corner_radius=12
-        )
-        filter_frame.pack(fill="x", padx=0, pady=5, ipady=4)
-        
-        self.filter_entry = ctk.CTkEntry(
-            filter_frame,
-            height=38,
-            corner_radius=19,
-            border_width=1,
-            border_color=self.colors["entry_border"],
-            fg_color=self.colors["entry_bg"],
-            placeholder_text="🔎  Filtrar resultados...",
-            font=self.fonts["secondary"]
-        )
-        self.filter_entry.pack(side="left", padx=(12, 5), expand=True, fill="x")
-        self.filter_entry.bind("<KeyRelease>", self.filter_results)
-        
-        self.credits_label = ctk.CTkLabel(
-            filter_frame,
-            text="Créditos: 0",
-            font=self.fonts["main_bold"],
-            text_color=self.colors["accent"]
-        )
-        self.credits_label.pack(side="right", padx=(5, 15))
-        
-        # Configuración completa del estilo ttk.Treeview adaptativo al tema
-        is_dark = ctk.get_appearance_mode() == "Dark"
-        tree_bg = "#1e293b" if is_dark else "#ffffff"
-        tree_fg = "#f1f5f9" if is_dark else "#1e293b"
-
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure(
-            "Custom.Treeview",
-            rowheight=32,
-            font=("Segoe UI", 11),
-            background=tree_bg,
-            fieldbackground=tree_bg,
-            foreground=tree_fg,
-            borderwidth=0,
-            relief="flat"
-        )
-        style.configure(
-            "Custom.Treeview.Heading",
-            font=("Segoe UI", 11, "bold"),
-            background="#6366f1",
-            foreground="white",
-            relief="flat",
-            padding=(10, 8)
-        )
-        style.map(
-            "Custom.Treeview",
-            background=[("selected", "#6366f1")],
-            foreground=[("selected", "white")]
-        )
-        style.map(
-            "Custom.Treeview.Heading",
-            background=[("active", "#4f46e5")]
-        )
-
-        # Frame de resultados
-        results_frame = ctk.CTkFrame(
-            main_frame,
-            fg_color=self.colors["card"],
-            border_color=self.colors["border"],
-            border_width=1,
-            corner_radius=12
-        )
-        results_frame.pack(fill="both", expand=True, padx=0, pady=5)
-        
-        # Treeview para resultados con columnas reordenadas por prioridad
-        columns = ("date", "name", "ip", "type", "media", "bucket", "size", "score", "systemid")
-        self.results_tree = ttk.Treeview(
-            results_frame,
-            columns=columns,
-            show="tree headings",
-            height=15,
-            style="Custom.Treeview"
-        )
-        
-        # Configurar columnas
-        self.results_tree.heading("#0", text="", anchor="w")
-        self.results_tree.column("#0", width=0, minwidth=0)
-        
-        # Configurar columnas con anchos específicos (fecha como prioridad)
-        column_widths = {
-            "date": 130,      # Fecha (primera prioridad)
-            "name": 200,      # Nombre del archivo/documento
-            "ip": 120,        # Dirección IP
-            "type": 80,       # Tipo de contenido
-            "media": 100,     # Tipo de media
-            "bucket": 120,    # Bucket/fuente
-            "size": 80,       # Tamaño
-            "score": 60,      # Puntuación de relevancia
-            "systemid": 200   # ID del sistema
-        }
-        
-        for col in columns:
-            self.results_tree.heading(col, text=col.capitalize(), anchor="w")
-            width = column_widths.get(col, 120)
-            self.results_tree.column(col, width=width, minwidth=60)
-            # Agregar binding para ordenar al hacer clic en el header
-            self.results_tree.heading(col, command=lambda c=col: self._sort_treeview_by_column(c, False))
-        
-        # Scrollbars para treeview
-        v_scrollbar = ttk.Scrollbar(results_frame, orient="vertical", command=self.results_tree.yview)
-        h_scrollbar = ttk.Scrollbar(results_frame, orient="horizontal", command=self.results_tree.xview)
-        self.results_tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-        
-        # Grid para treeview y scrollbars
-        self.results_tree.grid(row=0, column=0, sticky="nsew")
-        v_scrollbar.grid(row=0, column=1, sticky="ns")
-        h_scrollbar.grid(row=1, column=0, sticky="ew")
-        
-        results_frame.grid_rowconfigure(0, weight=1)
-        results_frame.grid_columnconfigure(0, weight=1)
-        
-        # Bind eventos del treeview
-        self.results_tree.bind("<Double-1>", self.on_item_double_click)
-        self.results_tree.bind("<Button-3>", self.show_context_menu)
-        
-        # Status bar refinado de alta calidad
-        status_frame = ctk.CTkFrame(
-            main_frame,
-            fg_color=("#f1f5f9", "#1e293b"),
-            corner_radius=0,
-            height=45
-        )
-        status_frame.pack(fill="x", padx=0, pady=(5, 0))
-        
-        self.status_label = ctk.CTkLabel(
-            status_frame,
-            text="Listo.",
-            font=self.fonts["tertiary"],
-            text_color=self.colors["text_secondary"]
-        )
-        self.status_label.pack(side="left", padx=(15, 5), pady=8)
-        
-        # Frame para barra de progreso y texto
-        progress_container = ctk.CTkFrame(status_frame, fg_color="transparent")
-        progress_container.pack(side="right", padx=(5, 15), pady=8)
-        
-        # Etiqueta de progreso
-        self.progress_label = ctk.CTkLabel(
-            progress_container,
-            text="",
-            font=self.fonts["tertiary"],
-            text_color=self.colors["text_secondary"]
-        )
-        self.progress_label.pack(side="left", padx=(0, 10))
-        
-        # Barra de progreso personalizada
-        self.progress_bar = ctk.CTkProgressBar(
-            progress_container,
-            width=250,
-            height=6,
-            corner_radius=3,
-            fg_color=("#e2e8f0", "#334155"),
-            progress_color=self.colors["accent"]
-        )
-        self.progress_bar.pack(side="right")
-        if hasattr(self, "progress_bar"):
-            self.progress_bar.set(0)
-    
-    def _setup_menus(self):
-        """Configurar menús"""
-        menubar = Menu(self)
-        self.config(menu=menubar)
-        
-        # Menú Archivo
-        file_menu = Menu(menubar, tearoff=0, font=self.fonts["menu"])
-        menubar.add_cascade(label="Archivo", menu=file_menu)
-        file_menu.add_command(label="Exportar a CSV...", command=self.export_to_csv_safe)
-        file_menu.add_command(label="Exportar a JSON...", command=self.export_to_json_safe)
-        file_menu.add_command(label="Exportar a PDF...", command=self.export_to_pdf_safe)
-        file_menu.add_command(label="Exportar a HTML...", command=self.export_to_html_safe)
-        file_menu.add_separator()
-        file_menu.add_command(label="Limpiar Historial", command=self._clear_history)
-        file_menu.add_separator()
-        file_menu.add_command(label="Salir", command=self.quit)
-        
-        # Menú Configuración
-        config_menu = Menu(menubar, tearoff=0, font=self.fonts["menu"])
-        menubar.add_cascade(label="Configuración", menu=config_menu)
-        config_menu.add_command(label="Gestionar Clave API...", command=self.manage_api_key)
-        config_menu.add_separator()
-        config_menu.add_command(label="Español", command=lambda: self._set_language("es"))
-        config_menu.add_command(label="English", command=lambda: self._set_language("en"))
-        config_menu.add_separator()
-        config_menu.add_command(label="Tema Claro", command=lambda: self._set_theme("light"))
-        config_menu.add_command(label="Tema Oscuro", command=lambda: self._set_theme("dark"))
-        
-        # Menú Ayuda
-        help_menu = Menu(menubar, tearoff=0, font=self.fonts["menu"])
-        menubar.add_cascade(label="Ayuda", menu=help_menu)
-        help_menu.add_command(label="Refrescar Créditos", command=self.refresh_credits)
-        help_menu.add_command(label="Obtener Clave API", command=self.open_intelx_api_page)
-        help_menu.add_separator()
-        help_menu.add_command(label="Acerca de", command=self.show_about)
-        
-        # Menú contextual para treeview
-        self.context_menu = Menu(self, tearoff=0, font=self.fonts["menu"])
-        self.context_menu.add_command(label="Vista Previa", command=self.preview_selected)
-        self.context_menu.add_separator()
-        self.context_menu.add_command(label="Seleccionar Todo", command=self.select_all)
-        self.context_menu.add_command(label="Deseleccionar", command=self.deselect_all)
-        self.context_menu.add_separator()
-        self.context_menu.add_command(label="Copiar", command=self.copy_selected)
-        self.context_menu.add_command(label="Exportar Selección", command=self.export_selection)
-
-    def _sort_treeview_by_column(self, col, reverse):
-        """Ordena el Treeview por la columna seleccionada."""
-        # Obtener todos los items y sus valores
-        items = [(self.results_tree.set(k, col), k) for k in self.results_tree.get_children("")]
-        # Función de ordenamiento segura
-        def sort_key(item):
-            val = str(item[0])  # Convertir a string siempre
-            # Intentar convertir a número si es posible
-            if val.replace('.', '', 1).replace('-', '', 1).isdigit():
-                try:
-                    return float(val)
-                except ValueError:
-                    return val.lower()
-            return val.lower()
-        
-        # Ordenar items
-        items.sort(key=sort_key, reverse=reverse)
-        
-        # Reordenar los items en el treeview
-        for index, (val, k) in enumerate(items):
-            self.results_tree.move(k, '', index)
-        
-        # Alternar el orden para el próximo clic
-        self.results_tree.heading(col, command=lambda c=col: self._sort_treeview_by_column(c, not reverse))
-
-    def _clear_history(self):
-        """Limpiar todo el historial de resultados"""
-        if not ui_components.show_custom_question_dialog(
-            self, "Limpiar Historial",
-            "¿Está seguro de que desea eliminar todo el historial de resultados? Esta acción no se puede deshacer."
-        ):
-            return
-        
-        self.current_records = []
-        save_history([])
-        
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
-        
-        if hasattr(self, "status_label"):
-            self.status_label.configure(text="Historial limpiado")
-
-    def _set_language(self, lang):
-        """Cambiar idioma"""
-        self.current_language = lang
-        self._save_language()
-        self._update_language()
-    
-    def _set_theme(self, theme):
-        """Cambiar tema"""
-        ctk.set_appearance_mode(theme)
-    
-    def _save_language(self):
-        """Guardar idioma seleccionado"""
-        try:
-            set_key(self.config_file, 'LANGUAGE', self.current_language)
-        except:
-            pass
-    
-    def _update_language(self):
-        """Actualizar textos según idioma"""
-        lang = self.languages.get(self.current_language, self.languages["es"])
-        
-        # Actualizar elementos UI
-        self.search_label.configure(text=lang["Correo o Dominio"])
-        self.search_button.configure(text=lang["Buscar"])
-        self.cancel_button.configure(text=lang["Cancelar"])
-        self.filter_entry.configure(placeholder_text=lang["Filtrar resultados"])
-        self.credits_label.configure(text=f"{lang['Créditos']} {self.credits}")
-        if hasattr(self, "status_label"):
-            self.status_label.configure(text=lang["Listo"])
-        
-        # Actualizar headers del treeview
-        self._update_treeview_headers()
-    
-    def _update_treeview_headers(self):
-        """Actualizar headers del treeview según idioma"""
-        lang = self.languages.get(self.current_language, self.languages["es"])
-        
-        headers = {
-            "date": "Fecha" if self.current_language == "es" else "Date",
-            "name": "Nombre" if self.current_language == "es" else "Name",
-            "ip": "IP" if self.current_language == "es" else "IP",
-            "type": "Tipo" if self.current_language == "es" else "Type", 
-            "media": "Media",
-            "bucket": "Fuente" if self.current_language == "es" else "Source",
-            "size": "Tamaño" if self.current_language == "es" else "Size",
-            "score": "Puntuación" if self.current_language == "es" else "Score",
-            "systemid": "ID Sistema" if self.current_language == "es" else "System ID"
-        }
-        
-        for col, header in headers.items():
-            self.results_tree.heading(col, text=header)
-    
-    def _load_api_config(self):
-        """Cargar configuración de API"""
-        try:
-            self.api_key = get_stored_api_key()
-            if self.api_key:
-                self.refresh_credits()
+            msg = self.format(record)
+            level = record.levelname
+            self.log_message.emit(msg, level)
         except Exception:
-            self.api_key = ''
-    
-    def search_intelx(self):
-        """Buscar en IntelX"""
-        term = self.term_entry.get().strip()
-        if not term:
-            ui_components.show_custom_messagebox(self, "Error", "Ingrese un término de búsqueda", "warning")
-            return
-        
-        if not self.api_key:
-            ui_components.show_custom_messagebox(self, "Error", "Configure su clave API primero", "warning")
-            self.manage_api_key()
-            return
-        
-        # Actualizar créditos antes de iniciar la búsqueda
-        self.refresh_credits()
-        
-        # Recordar cantidad de registros existentes para acumular después
-        self._existing_count_before_search = len(self.current_records)
-        
-        self.stop_search = False
-        self.cancel_event = threading.Event()
-        
-        # Actualizar UI
-        self.search_button.configure(state="disabled")
-        self.cancel_button.configure(state="normal")
-        if hasattr(self, "status_label"):
-            self.status_label.configure(text="Iniciando búsqueda...")
-        if hasattr(self, "progress_bar"):
-            self.progress_bar.set(0.1)
-        if hasattr(self, "progress_label"):
-            self.progress_label.configure(text="Preparando...")
-        
-        # Iniciar búsqueda en hilo separado
-        self.search_thread = threading.Thread(target=self._search_worker, args=(term,))
-        self.search_thread.daemon = True
-        self.search_thread.start()
-    
-    def _search_worker(self, term):
-        """Worker para búsqueda en hilo separado"""
+            pass
+
+
+# --- Analysis Worker Thread ---
+class AnalysisWorker(QObject):
+    """Worker thread for IntelX API searches."""
+    progress_updated = Signal(int, str)
+    log_emitted = Signal(str, str)
+    finished = Signal(bool, object, str)
+    search_completed = Signal(list)
+
+    def __init__(self, term, api_key, cancel_event=None):
+        super().__init__()
+        self.term = term
+        self.api_key = api_key
+        self.cancel_event = cancel_event or threading.Event()
+
+    @Slot()
+    def run(self):
         try:
-            # Progreso inicial
-            if hasattr(self, "progress_bar"):
-                self.after(0, lambda: self.progress_bar.set(0.3))
-            if hasattr(self, "progress_label"):
-                self.after(0, lambda: self.progress_label.configure(text="Conectando..."))
-            if hasattr(self, "status_label"):
-                self.after(0, lambda: self.status_label.configure(text="Conectando con IntelX..."))
-            
-            # Usar módulo API con cancel_event para responder de inmediato al botón Cancelar
+            self.progress_updated.emit(10, "Preparando...")
+            self.log_emitted.emit(f"Iniciando búsqueda para: {self.term}", "INFO")
+
+            self.progress_updated.emit(30, "Conectando...")
             success, data_or_error, search_id = check_intelx(
-                term, self.api_key, cancel_event=self.cancel_event
+                self.term, self.api_key, cancel_event=self.cancel_event
             )
-            
-            # Progreso medio
-            if hasattr(self, "progress_bar"):
-                self.after(0, lambda: self.progress_bar.set(0.7))
-            if hasattr(self, "progress_label"):
-                self.after(0, lambda: self.progress_label.configure(text="Procesando..."))
-            
+
+            self.progress_updated.emit(70, "Procesando...")
+
             if success:
-                if hasattr(self, "status_label"):
-                    self.after(0, lambda: self.status_label.configure(text="Procesando resultados..."))
-                
-                # Extraer nuevos registros del resultado
                 new_records = []
                 if isinstance(data_or_error, dict) and 'records' in data_or_error:
                     new_records = data_or_error['records']
@@ -632,273 +169,849 @@ class IntelXCheckerApp(ctk.CTk):
                     new_records = data_or_error
                 elif isinstance(data_or_error, dict):
                     new_records = [data_or_error]
-                
-                # Fusionar con registros existentes (deduplicando)
-                self.current_records = merge_records(self.current_records, new_records)
-                
-                # Guardar historial completo
-                save_history(self.current_records)
-                
-                # Progreso final
-                if hasattr(self, "progress_bar"):
-                    self.after(0, lambda: self.progress_bar.set(1.0))
-                if hasattr(self, "progress_label"):
-                    self.after(0, lambda: self.progress_label.configure(text="Completado"))
-                
-                if self.current_records and not self.stop_search:
-                    self.after(0, self._populate_results)
-                    if hasattr(self, "status_label"):
-                        self.after(0, lambda: self.status_label.configure(text=f"Encontrados {len(self.current_records)} resultados"))
-                else:
-                    if hasattr(self, "status_label"):
-                        self.after(0, lambda: self.status_label.configure(text="No se encontraron resultados"))
+
+                self.log_emitted.emit(f"Registros obtenidos: {len(new_records)}", "INFO")
+                self.progress_updated.emit(100, "Completado")
+                self.finished.emit(True, new_records, search_id)
             else:
-                # Error en la búsqueda
                 error_msg = data_or_error if isinstance(data_or_error, str) else "Error en la búsqueda"
-                if hasattr(self, "status_label"):
-                    self.after(0, lambda: self.status_label.configure(text=error_msg))
-                if hasattr(self, "progress_bar"):
-                    self.after(0, lambda: self.progress_bar.set(0))
-                if hasattr(self, "progress_label"):
-                    self.after(0, lambda: self.progress_label.configure(text="Error"))
-                
+                self.log_emitted.emit(f"Error: {error_msg}", "ERROR")
+                self.progress_updated.emit(0, "Error")
+                self.finished.emit(False, error_msg, "")
+
         except Exception as e:
-            logger.exception("Error en búsqueda")
-            if hasattr(self, "status_label"):
-                self.after(0, lambda: self.status_label.configure(text=f"Error: {str(e)}"))
-            if hasattr(self, "progress_bar"):
-                self.after(0, lambda: self.progress_bar.set(0))
-            if hasattr(self, "progress_label"):
-                self.after(0, lambda: self.progress_label.configure(text="Error"))
-        finally:
-            self.after(0, self._search_finished)
-    
-    def _populate_results(self):
-        """Poblar treeview con resultados usando la estructura real de la API de IntelX"""
-        # Si no estamos en el hilo principal, reprogramar con self.after
-        if threading.current_thread() != threading.main_thread():
-            self.after(0, self._populate_results)
+            logger.exception("Error en worker de búsqueda")
+            self.log_emitted.emit(f"Excepción: {str(e)}", "CRITICAL")
+            self.progress_updated.emit(0, "Error")
+            self.finished.emit(False, str(e), "")
+
+
+# --- StatCard Widget ---
+class StatCard(QFrame):
+    """Dashboard KPI card widget matching IP-Analyzer style."""
+    def __init__(self, title, value="0", icon=None, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet(f"""
+            StatCard {{
+                background-color: {COLORS['surface']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+            }}
+        """)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        icon_lbl = QLabel()
+        if icon:
+            icon_lbl.setPixmap(icon.pixmap(28, 28))
+        layout.addWidget(icon_lbl)
+
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(2)
+
+        self.val_lbl = QLabel(value)
+        self.val_lbl.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {COLORS['text_heading']};")
+
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {COLORS['text_subtle']}; text-transform: uppercase;")
+
+        text_layout.addWidget(self.val_lbl)
+        text_layout.addWidget(title_lbl)
+
+        layout.addLayout(text_layout)
+        layout.addStretch()
+
+    def set_value(self, value):
+        self.val_lbl.setText(str(value))
+
+
+# --- Main Window ---
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("IntelX Checker V2")
+        self.setGeometry(100, 100, 1400, 900)
+        self.setMinimumSize(1100, 700)
+
+        self.current_language = "es"
+        self.app_version = "2.0.0"
+        self.config_file = os.path.join(os.path.dirname(__file__), '..', '.env')
+
+        # State
+        self.current_records = load_history()
+        self.credits = 0
+        self.api_key = ''
+        self.search_thread = None
+        self.worker = None
+        self.stop_search = False
+        self.cancel_event = None
+        self.preview_windows = {}
+
+        # Setup
+        self._init_icons_safe()
+        self._setup_ui()
+        self._setup_menu()
+        self._setup_log_handler()
+        self._apply_styles()
+        self._load_api_config()
+        self._update_language()
+
+        if self.current_records:
+            QTimer.singleShot(100, self._populate_results)
+
+    def _init_icons_safe(self):
+        try:
+            init_icons()
+        except Exception as e:
+            logger.debug(f"Error initializing icons: {e}")
+
+    def _apply_styles(self):
+        self.setStyleSheet(f"""
+            QMainWindow {{
+                background-color: {COLORS['bg_main']};
+            }}
+            #HeaderFrame {{
+                background-color: {COLORS['surface']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+            }}
+            #SearchFrame {{
+                background-color: {COLORS['surface']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+            }}
+            #FilterFrame {{
+                background-color: {COLORS['surface']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+            }}
+            #ResultsFrame {{
+                background-color: {COLORS['surface']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+            }}
+            QGroupBox {{
+                font-weight: bold;
+                font-size: 13px;
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+                margin-top: 6px;
+                background-color: {COLORS['surface']};
+                padding-top: 12px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 6px;
+                color: {COLORS['primary']};
+            }}
+            QTableWidget {{
+                gridline-color: {COLORS['border']};
+                background-color: {COLORS['surface']};
+                alternate-background-color: {COLORS['table_alt_row']};
+                selection-background-color: {COLORS['table_selection_bg']};
+                selection-color: {COLORS['table_selection_text']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                font-size: 11px;
+            }}
+            QTableWidget::item {{
+                padding: 4px 6px;
+                color: {COLORS['text_heading']};
+            }}
+            QHeaderView::section {{
+                background-color: {COLORS['table_header_bg']};
+                color: {COLORS['text_body']};
+                font-weight: bold;
+                font-size: 12px;
+                padding: 6px;
+                border: none;
+                border-right: 1px solid {COLORS['border']};
+                border-bottom: 2px solid {COLORS['border_hover']};
+            }}
+            QLineEdit {{
+                border: 1px solid {COLORS['border_hover']};
+                border-radius: 6px;
+                padding: 5px 10px;
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_heading']};
+                font-size: 12px;
+            }}
+            QLineEdit:focus {{
+                border-color: {COLORS['primary']};
+            }}
+            QComboBox {{
+                border: 1px solid {COLORS['border_hover']};
+                border-radius: 6px;
+                padding: 5px 10px;
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_heading']};
+                font-size: 12px;
+            }}
+            QComboBox:focus {{
+                border-color: {COLORS['primary']};
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_heading']};
+                selection-background-color: {COLORS['table_selection_bg']};
+                selection-color: {COLORS['table_selection_text']};
+                border: 1px solid {COLORS['border_hover']};
+                padding: 4px;
+            }}
+            QPushButton {{
+                border: 1px solid {COLORS['border_hover']};
+                border-radius: 6px;
+                padding: 6px 14px;
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_body']};
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['progress_bg']};
+                border-color: {COLORS['text_disabled']};
+            }}
+            QPushButton#primaryBtn {{
+                background-color: {COLORS['primary']};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-weight: bold;
+            }}
+            QPushButton#primaryBtn:hover {{
+                background-color: {COLORS['primary_hover']};
+            }}
+            QPushButton#dangerBtn {{
+                background-color: #EF4444;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-weight: bold;
+            }}
+            QPushButton#dangerBtn:hover {{
+                background-color: #DC2626;
+            }}
+            QProgressBar {{
+                border: 1px solid {COLORS['border']};
+                border-radius: 7px;
+                background-color: {COLORS['progress_bg']};
+                text-align: center;
+                font-size: 10px;
+                font-weight: bold;
+            }}
+            QProgressBar::chunk {{
+                background-color: {COLORS['progress_chunk']};
+                border-radius: 6px;
+            }}
+            QMessageBox {{
+                background-color: {COLORS['surface']};
+            }}
+            QMessageBox QLabel {{
+                color: {COLORS['text_heading']};
+                font-size: 12px;
+            }}
+            QMessageBox QPushButton {{
+                background-color: {COLORS['primary']};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 16px;
+                min-width: 60px;
+            }}
+            QMessageBox QPushButton:hover {{
+                background-color: {COLORS['primary_hover']};
+            }}
+        """)
+
+    def _setup_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QVBoxLayout(central)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(8)
+
+        # --- Header ---
+        header_frame = QFrame()
+        header_frame.setObjectName("HeaderFrame")
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(10, 6, 10, 6)
+
+        brand_layout = QVBoxLayout()
+        brand_layout.setSpacing(2)
+        title_lbl = QLabel(f"IntelX Checker V{self.app_version}")
+        title_lbl.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {COLORS['text_heading']};")
+        sub_lbl = QLabel("Herramienta de Inteligencia y Fugas de Datos")
+        sub_lbl.setStyleSheet(f"font-size: 11px; color: {COLORS['text_subtle']};")
+        brand_layout.addWidget(title_lbl)
+        brand_layout.addWidget(sub_lbl)
+        header_layout.addLayout(brand_layout)
+
+        header_layout.addStretch()
+
+        self.token_status_lbl = QLabel()
+        self.token_status_lbl.setStyleSheet(f"font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px;")
+        header_layout.addWidget(self.token_status_lbl)
+
+        self.btn_manage_token = QPushButton(" Gestionar Token")
+        if ICONS_AVAILABLE:
+            self.btn_manage_token.setIcon(ICONS.get('key', QIcon()))
+        self.btn_manage_token.setFixedHeight(28)
+        self.btn_manage_token.clicked.connect(self.manage_api_key)
+        header_layout.addWidget(self.btn_manage_token)
+
+        main_layout.addWidget(header_frame)
+
+        # --- Search Card ---
+        search_frame = QFrame()
+        search_frame.setObjectName("SearchFrame")
+        search_layout = QHBoxLayout(search_frame)
+        search_layout.setContentsMargins(10, 8, 10, 8)
+
+        self.search_label = QLabel("Correo o Dominio:")
+        self.search_label.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {COLORS['text_heading']};")
+        search_layout.addWidget(self.search_label)
+
+        self.term_entry = QLineEdit()
+        self.term_entry.setPlaceholderText("🔍  Buscar email o dominio...")
+        self.term_entry.setFixedHeight(40)
+        self.term_entry.returnPressed.connect(self.search_intelx)
+        search_layout.addWidget(self.term_entry, stretch=1)
+
+        self.search_button = QPushButton("🔍  Buscar")
+        self.search_button.setObjectName("primaryBtn")
+        self.search_button.setFixedWidth(150)
+        self.search_button.setFixedHeight(40)
+        self.search_button.clicked.connect(self.search_intelx)
+        search_layout.addWidget(self.search_button)
+
+        self.cancel_button = QPushButton("✕  Cancelar")
+        self.cancel_button.setObjectName("dangerBtn")
+        self.cancel_button.setFixedWidth(150)
+        self.cancel_button.setFixedHeight(40)
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.cancel_search)
+        search_layout.addWidget(self.cancel_button)
+
+        main_layout.addWidget(search_frame)
+
+        # --- Filter Bar ---
+        filter_frame = QFrame()
+        filter_frame.setObjectName("FilterFrame")
+        filter_layout = QHBoxLayout(filter_frame)
+        filter_layout.setContentsMargins(10, 4, 10, 4)
+
+        self.filter_entry = QLineEdit()
+        self.filter_entry.setPlaceholderText("🔎  Filtrar resultados...")
+        self.filter_entry.setFixedHeight(34)
+        self.filter_entry.textChanged.connect(self.filter_results)
+        filter_layout.addWidget(self.filter_entry, stretch=1)
+
+        self.credits_label = QLabel("Créditos: 0")
+        self.credits_label.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {COLORS['primary']};")
+        filter_layout.addWidget(self.credits_label)
+
+        main_layout.addWidget(filter_frame)
+
+        # --- Progress Bar ---
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFixedHeight(12)
+        main_layout.addWidget(self.progress_bar)
+
+        # --- KPI Stats Cards ---
+        stats_layout = QHBoxLayout()
+        stats_layout.setSpacing(6)
+        self.card_total = StatCard("Total Resultados", "0", ICONS.get('globe'))
+        self.card_sources = StatCard("Fuentes Únicas", "0", ICONS.get('building'))
+        self.card_types = StatCard("Tipos de Contenido", "0", ICONS.get('database'))
+        self.card_score = StatCard("Puntuación Promedio", "0", ICONS.get('lock'))
+        stats_layout.addWidget(self.card_total)
+        stats_layout.addWidget(self.card_sources)
+        stats_layout.addWidget(self.card_types)
+        stats_layout.addWidget(self.card_score)
+        main_layout.addLayout(stats_layout)
+
+        # --- Splitter (Table + Log) ---
+        self.splitter = QSplitter(Qt.Vertical)
+
+        # Results Table
+        results_widget = QWidget()
+        res_vbox = QVBoxLayout(results_widget)
+        res_vbox.setContentsMargins(0, 0, 0, 0)
+        res_vbox.setSpacing(4)
+
+        self.table = QTableWidget(0, 9)
+        self.table.setHorizontalHeaderLabels([
+            "Fecha", "Nombre", "IP", "Tipo", "Media",
+            "Fuente", "Tamaño", "Puntuación", "ID Sistema"
+        ])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSortingEnabled(True)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
+        self.table.doubleClicked.connect(self.on_item_double_click)
+
+        header = self.table.horizontalHeader()
+        header.resizeSection(0, 130)
+        header.resizeSection(1, 200)
+        header.resizeSection(2, 120)
+        header.resizeSection(3, 100)
+        header.resizeSection(4, 100)
+        header.resizeSection(5, 120)
+        header.resizeSection(6, 80)
+        header.resizeSection(7, 80)
+        header.resizeSection(8, 180)
+
+        res_vbox.addWidget(self.table)
+        self.splitter.addWidget(results_widget)
+
+        # Log Console
+        self.log_widget = QGroupBox(" Log de Ejecucion del Sistema")
+        log_vbox = QVBoxLayout(self.log_widget)
+        log_vbox.setContentsMargins(4, 4, 4, 4)
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setStyleSheet(
+            f"font-family: 'Cascadia Code', 'Consolas', monospace; "
+            f"font-size: 11px; background-color: {COLORS['log_bg']}; "
+            f"color: {COLORS['log_text']};"
+        )
+        log_vbox.addWidget(self.log_text)
+        self.splitter.addWidget(self.log_widget)
+        self.log_widget.setVisible(False)
+        self.splitter.setSizes([700, 120])
+
+        main_layout.addWidget(self.splitter, stretch=1)
+
+        # --- Status Bar ---
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_label = QLabel("Listo.")
+        self.status_bar.addWidget(self.status_label)
+
+        self.progress_label = QLabel("")
+        self.status_bar.addPermanentWidget(self.progress_label)
+
+    def _setup_menu(self):
+        menu_bar = self.menuBar()
+
+        # Archivo
+        file_menu = menu_bar.addMenu("&Archivo")
+
+        action_csv = QAction("Exportar a CSV...", self)
+        if ICONS_AVAILABLE:
+            action_csv.setIcon(ICONS.get('file_export', QIcon()))
+        action_csv.triggered.connect(self.export_to_csv_safe)
+        file_menu.addAction(action_csv)
+
+        action_json = QAction("Exportar a JSON...", self)
+        if ICONS_AVAILABLE:
+            action_json.setIcon(ICONS.get('file_export', QIcon()))
+        action_json.triggered.connect(self.export_to_json_safe)
+        file_menu.addAction(action_json)
+
+        action_pdf = QAction("Exportar a PDF...", self)
+        if ICONS_AVAILABLE:
+            action_pdf.setIcon(ICONS.get('file_export', QIcon()))
+        action_pdf.triggered.connect(self.export_to_pdf_safe)
+        file_menu.addAction(action_pdf)
+
+        action_html = QAction("Exportar a HTML...", self)
+        if ICONS_AVAILABLE:
+            action_html.setIcon(ICONS.get('file_export', QIcon()))
+        action_html.triggered.connect(self.export_to_html_safe)
+        file_menu.addAction(action_html)
+
+        file_menu.addSeparator()
+
+        action_clear = QAction("Limpiar Historial", self)
+        if ICONS_AVAILABLE:
+            action_clear.setIcon(ICONS.get('trash', QIcon()))
+        action_clear.triggered.connect(self._clear_history)
+        file_menu.addAction(action_clear)
+
+        file_menu.addSeparator()
+
+        action_exit = QAction("Salir", self)
+        if ICONS_AVAILABLE:
+            action_exit.setIcon(ICONS.get('sign_out', QIcon()))
+        action_exit.triggered.connect(self.close)
+        file_menu.addAction(action_exit)
+
+        # Ver
+        view_menu = menu_bar.addMenu("&Ver")
+        self.action_toggle_log = QAction("Log de Ejecucion", self, checkable=True)
+        if ICONS_AVAILABLE:
+            self.action_toggle_log.setIcon(ICONS.get('clipboard', QIcon()))
+        self.action_toggle_log.toggled.connect(self._toggle_log)
+        view_menu.addAction(self.action_toggle_log)
+
+        view_menu.addSeparator()
+
+        action_lang_es = QAction("Español", self)
+        action_lang_es.triggered.connect(lambda: self._set_language("es"))
+        view_menu.addAction(action_lang_es)
+
+        action_lang_en = QAction("English", self)
+        action_lang_en.triggered.connect(lambda: self._set_language("en"))
+        view_menu.addAction(action_lang_en)
+
+        # Ayuda
+        help_menu = menu_bar.addMenu("&Ayuda")
+
+        action_refresh = QAction("Refrescar Créditos", self)
+        if ICONS_AVAILABLE:
+            action_refresh.setIcon(ICONS.get('sync', QIcon()))
+        action_refresh.triggered.connect(self.refresh_credits)
+        help_menu.addAction(action_refresh)
+
+        action_get_key = QAction("Obtener Clave API", self)
+        if ICONS_AVAILABLE:
+            action_get_key.setIcon(ICONS.get('key', QIcon()))
+        action_get_key.triggered.connect(self.open_intelx_api_page)
+        help_menu.addAction(action_get_key)
+
+        help_menu.addSeparator()
+
+        action_about = QAction("Acerca de", self)
+        if ICONS_AVAILABLE:
+            action_about.setIcon(ICONS.get('info', QIcon()))
+        action_about.triggered.connect(self.show_about)
+        help_menu.addAction(action_about)
+
+    def _setup_log_handler(self):
+        self.log_handler = QtLogHandler()
+        self.log_handler.log_message.connect(self._append_log)
+        self.log_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logging.getLogger().addHandler(self.log_handler)
+
+    @Slot(str, str)
+    def _append_log(self, msg, level):
+        color = COLORS['log_text']
+        if level == "WARNING":
+            color = COLORS['log_warning']
+        elif level in ("ERROR", "CRITICAL"):
+            color = COLORS['log_error']
+        elif level == "DEBUG":
+            color = COLORS['log_debug']
+        self.log_text.append(f'<font color="{color}">{msg}</font>')
+
+    def _toggle_log(self, checked):
+        self.log_widget.setVisible(checked)
+
+    def _update_token_status(self):
+        if self.api_key:
+            self.token_status_lbl.setText("Token API Activo")
+            self.token_status_lbl.setStyleSheet(
+                f"font-size: 11px; font-weight: 600; padding: 3px 8px; "
+                f"border-radius: 10px; background-color: {COLORS['success_bg']}; "
+                f"color: {COLORS['success_text']};"
+            )
+        else:
+            self.token_status_lbl.setText("Sin Token (Modo Local)")
+            self.token_status_lbl.setStyleSheet(
+                f"font-size: 11px; font-weight: 600; padding: 3px 8px; "
+                f"border-radius: 10px; background-color: {COLORS['warning_bg']}; "
+                f"color: {COLORS['warning_text']};"
+            )
+
+    def _update_kpi_cards(self):
+        total = len(self.current_records)
+        sources = set()
+        types = set()
+        scores = []
+
+        for record in self.current_records:
+            if isinstance(record, dict):
+                bucket = record.get('bucket', record.get('bucketh', ''))
+                if bucket:
+                    sources.add(bucket)
+                media = record.get('media', 0)
+                types.add(str(media))
+                score = record.get('xscore', 0)
+                if score and score > 0:
+                    scores.append(score)
+
+        avg_score = f"{sum(scores) / len(scores):.1f}" if scores else "0"
+
+        self.card_total.set_value(str(total))
+        self.card_sources.set_value(str(len(sources)))
+        self.card_types.set_value(str(len(types)))
+        self.card_score.set_value(avg_score)
+
+    # --- Language & Theme ---
+    def _set_language(self, lang):
+        self.current_language = lang
+        try:
+            from dotenv import set_key
+            set_key(self.config_file, 'LANGUAGE', lang)
+        except Exception:
+            pass
+        self._update_language()
+
+    def _update_language(self):
+        lang = self.current_language
+        self.search_label.setText(t("Correo o Dominio", lang))
+        self.search_button.setText(t("Buscar", lang))
+        self.cancel_button.setText(t("Cancelar", lang))
+        self.filter_entry.setPlaceholderText(t("Filtrar resultados", lang))
+        self.credits_label.setText(f"{t('Créditos', lang)} {self.credits}")
+        self.status_label.setText(t("Listo", lang))
+
+        headers = [
+            t("Fecha", lang), t("Nombre", lang), "IP",
+            t("Tipo", lang), t("Media", lang), t("Fuente", lang),
+            t("Tamaño", lang), t("Puntuación", lang), t("ID Sistema", lang)
+        ]
+        self.table.setHorizontalHeaderLabels(headers)
+
+    # --- API Config ---
+    def _load_api_config(self):
+        try:
+            self.api_key = get_stored_api_key()
+            self._update_token_status()
+            if self.api_key:
+                self.refresh_credits()
+        except Exception:
+            self.api_key = ''
+            self._update_token_status()
+
+    def manage_api_key(self):
+        from ui_components import ApiKeyDialog
+        dialog = ApiKeyDialog(self, self.api_key)
+        new_key = dialog.get_result()
+        if new_key is not None:
+            self.api_key = new_key
+            try:
+                save_stored_api_key(self.api_key, self.config_file)
+                self._update_token_status()
+                if self.api_key:
+                    self.refresh_credits()
+            except Exception as e:
+                logger.exception("Error guardando API key")
+
+    def open_intelx_api_page(self):
+        webbrowser.open("https://intelx.io/account?tab=developer")
+
+    def refresh_credits(self):
+        if not self.api_key:
+            return
+        try:
+            success, credits_or_error = get_api_credits(self.api_key)
+            if success:
+                self.credits = credits_or_error
+                lang = self.current_language
+                self.credits_label.setText(f"{t('Créditos', lang)} {self.credits}")
+            else:
+                self.credits_label.setText(f"{t('Créditos', self.current_language)} Error")
+        except Exception as e:
+            logger.exception("Error obteniendo créditos")
+            self.credits_label.setText(f"{t('Créditos', self.current_language)} Error")
+
+    def show_about(self):
+        from ui_components import AboutDialog
+        AboutDialog(self, self.app_version, self.current_language)
+
+    # --- Search ---
+    def search_intelx(self):
+        term = self.term_entry.text().strip()
+        if not term:
+            QMessageBox.warning(self, "Error", t("Ingrese un término de búsqueda", self.current_language))
+            return
+        if not self.api_key:
+            QMessageBox.warning(self, "Error", t("Configure su clave API primero", self.current_language))
+            self.manage_api_key()
             return
 
-        # Limpiar treeview antes de repoblar con los registros acumulados
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
+        self.refresh_credits()
+        self._existing_count_before_search = len(self.current_records)
+        self.stop_search = False
+        self.cancel_event = threading.Event()
+
+        self.search_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
+        self.progress_bar.setValue(10)
+        self.progress_label.setText("Preparando...")
+        self.status_label.setText(t("Iniciando búsqueda...", self.current_language))
+
+        self.worker = AnalysisWorker(term, self.api_key, self.cancel_event)
+        self.search_thread = QThread()
+        self.worker.moveToThread(self.search_thread)
+
+        self.worker.progress_updated.connect(self._on_worker_progress)
+        self.worker.log_emitted.connect(self._append_log)
+        self.worker.finished.connect(self._on_search_finished)
+
+        self.search_thread.started.connect(self.worker.run)
+        self.search_thread.start()
+
+    @Slot(int, str)
+    def _on_worker_progress(self, pct, msg):
+        self.progress_bar.setValue(pct)
+        self.progress_label.setText(msg)
+
+    @Slot(bool, object, str)
+    def _on_search_finished(self, success, data, search_id):
+        if success:
+            new_records = data if isinstance(data, list) else []
+            self.current_records = merge_records(self.current_records, new_records)
+            save_history(self.current_records)
+            self.progress_bar.setValue(100)
+            self.progress_label.setText(t("Completado", self.current_language))
+            self.status_label.setText(
+                f"{t('Resultados', self.current_language)}: {len(self.current_records)} registros"
+            )
+            self._populate_results()
+            self._update_kpi_cards()
+        else:
+            error_msg = data if isinstance(data, str) else "Error"
+            self.status_label.setText(error_msg)
+            self.progress_bar.setValue(0)
+            self.progress_label.setText(t("Error", self.current_language))
+
+        self.search_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        QTimer.singleShot(2000, lambda: self.progress_bar.setValue(0))
+        QTimer.singleShot(2000, lambda: self.progress_label.setText(""))
+        QTimer.singleShot(1000, self.refresh_credits)
+
+        self.search_thread.quit()
+        self.search_thread.wait()
+
+    def cancel_search(self):
+        self.stop_search = True
+        if self.cancel_event:
+            self.cancel_event.set()
+        self.status_label.setText(t("Búsqueda cancelada", self.current_language))
+        self.progress_label.setText(t("Cancelado", self.current_language))
+        self.search_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+
+    # --- Populate Table ---
+    def _populate_results(self):
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(0)
 
         for i, record in enumerate(self.current_records):
             if self.stop_search:
                 break
 
-            # Manejar diferentes tipos de datos de entrada
             if isinstance(record, str):
-                # Si es string, crear un registro básico
                 record_dict = {
-                    'name': f'Resultado {i+1}',
-                    'type': 1,  # Texto
-                    'media': 1,  # Paste
-                    'bucket': 'unknown',
-                    'size': len(record),
-                    'date': '',
-                    'xscore': 0,
-                    'systemid': f'record_{i}',
-                    'data': record
+                    'name': f'Resultado {i+1}', 'type': 1, 'media': 1,
+                    'bucket': 'unknown', 'size': len(record), 'date': '',
+                    'xscore': 0, 'systemid': f'record_{i}', 'data': record
                 }
             elif isinstance(record, dict):
                 record_dict = record
             else:
-                # Fallback para otros tipos
                 record_dict = {
-                    'name': f'Resultado {i+1}',
-                    'type': 0,
-                    'media': 0,
-                    'bucket': 'unknown',
-                    'size': 0,
-                    'date': '',
-                    'xscore': 0,
-                    'systemid': f'record_{i}',
-                    'data': str(record)
+                    'name': f'Resultado {i+1}', 'type': 0, 'media': 0,
+                    'bucket': 'unknown', 'size': 0, 'date': '',
+                    'xscore': 0, 'systemid': f'record_{i}', 'data': str(record)
                 }
 
-            # Fecha formateada (primera prioridad)
             date_str = record_dict.get('date', '')
-            if date_str:
-                try:
-                    # Formatear fecha si está disponible
-                    date_text = date_str[:19] if len(date_str) > 19 else date_str
-                except:
-                    date_text = date_str
-            else:
-                date_text = 'N/A'
+            date_text = date_str[:19] if date_str and len(date_str) > 19 else (date_str or 'N/A')
 
-            # Formatear datos basándose en la estructura del diccionario
             name = record_dict.get('name', f'Documento {i+1}')
             name = name[:60] + "..." if len(name) > 60 else name
 
-            # Extraer IP del nombre o datos
             ip_address = self._extract_ip_address(record_dict)
-
-            # Tipo de contenido (type)
             type_val = record_dict.get('type', 0)
             type_text = self._get_type_description(type_val)
-
-            # Media type (más descriptivo)
             media_val = record_dict.get('media', 0)
             media_text = self._get_media_description(media_val)
-
-            # Bucket con nombre legible
             bucket = record_dict.get('bucket', 'unknown')
-            bucket_text = record_dict.get('bucketh', bucket)  # bucketh es el nombre legible
-
-            # Tamaño formateado
+            bucket_text = record_dict.get('bucketh', bucket)
             size = record_dict.get('size', 0)
             size_text = self._format_file_size(size)
-
-            # Puntuación de relevancia (xscore)
             score = record_dict.get('xscore', 0)
             score_text = str(score) if score > 0 else 'N/A'
-
-            # System ID
             system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
 
-            # Nuevo orden: fecha, nombre, IP, tipo, media, bucket, tamaño, score, systemid
-            tag = "even" if i % 2 == 0 else "odd"
-            self.results_tree.insert("", "end", values=(
-                date_text, name, ip_address, type_text, media_text, 
-                bucket_text, size_text, score_text, system_id
-            ), tags=(tag,))
+            row = self.table.rowCount()
+            self.table.insertRow(row)
 
-        is_dark = ctk.get_appearance_mode() == "Dark"
-        even_bg = "#1e293b" if is_dark else "#ffffff"
-        odd_bg = "#253247" if is_dark else "#f1f5f9"
-        text_fg = "#f1f5f9" if is_dark else "#1e293b"
-        self.results_tree.tag_configure("even", background=even_bg, foreground=text_fg)
-        self.results_tree.tag_configure("odd", background=odd_bg, foreground=text_fg)
-    
+            items = [date_text, name, ip_address, type_text, media_text,
+                     bucket_text, size_text, score_text, system_id]
+
+            for col, val in enumerate(items):
+                item = QTableWidgetItem(str(val))
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                if col == 2:  # IP column - monospace bold
+                    item.setFont(QFont("Consolas", 10, QFont.Bold))
+                self.table.setItem(row, col, item)
+
+            # Color-code ISP column (col 5) based on content
+            isp_item = self.table.item(row, 5)
+            if isp_item:
+                isp_text = str(bucket_text).lower()
+                if 'error' in isp_text or 'red privada' in isp_text or 'private' in isp_text:
+                    isp_item.setBackground(QColor(COLORS['private_bg']))
+                    isp_item.setForeground(QColor(COLORS['private_text']))
+                elif 'error' in isp_text:
+                    isp_item.setBackground(QColor(COLORS['error_bg']))
+                    isp_item.setForeground(QColor(COLORS['error_text']))
+
+        self.table.setSortingEnabled(True)
+
     def _extract_ip_address(self, record_dict):
-        """Extraer dirección IP del registro"""
-        import re
-        
-        # Patrón para IPv4
         ipv4_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
-        # Patrón para IPv6 simplificado
         ipv6_pattern = r'\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b'
-        
-        # Buscar en diferentes campos
         search_fields = [
             record_dict.get('name', ''),
             record_dict.get('data', ''),
             str(record_dict)
         ]
-        
         for field in search_fields:
             if field:
-                # Buscar IPv4
                 ipv4_match = re.search(ipv4_pattern, field)
                 if ipv4_match:
                     return ipv4_match.group()
-                
-                # Buscar IPv6
                 ipv6_match = re.search(ipv6_pattern, field)
                 if ipv6_match:
                     return ipv6_match.group()
-        
         return 'N/A'
 
     def _get_type_description(self, type_val):
-        """
-        Obtener descripción del tipo de contenido usando el mapeo oficial de IntelX API.
-        Nunca devuelve números, siempre texto descriptivo.
-        """
         try:
-            # Convertir a entero si es necesario
             if isinstance(type_val, str):
                 try:
                     type_val = int(type_val)
                 except ValueError:
-                    return "Tipo de Contenido Desconocido"
-            
-            # Mapeo según documentación oficial de IntelX SDK
+                    return "Tipo Desconocido"
             type_descriptions = {
-                0: "Binario/Sin especificar",
-                1: "Texto plano",
-                2: "Imagen",
-                3: "Video",
-                4: "Audio",
-                5: "Documento",
-                6: "Ejecutable",
-                7: "Contenedor",
-                1001: "Usuario",
-                1002: "Filtración",
-                1004: "URL",
-                1005: "Foro"
+                0: "Binario", 1: "Texto", 2: "Imagen", 3: "Video",
+                4: "Audio", 5: "Documento", 6: "Ejecutable", 7: "Contenedor",
+                1001: "Usuario", 1002: "Filtración", 1004: "URL", 1005: "Foro"
             }
-            
-            description = type_descriptions.get(type_val)
-            
-            if description:
-                return description
-            else:
-                # Si no se encuentra, devolver descripción genérica (nunca un número)
-                return f"Tipo de Contenido Desconocido ({type_val})"
-                
-        except Exception as e:
-            logger.error(f"Error obteniendo descripción de tipo {type_val}: {e}")
-            return "Tipo de Contenido Error"
-    
+            return type_descriptions.get(type_val, f"Tipo ({type_val})")
+        except Exception:
+            return "Error"
+
     def _get_media_description(self, media_val):
-        """
-        Obtener descripción del tipo de media usando el mapeo oficial de IntelX API.
-        Nunca devuelve números, siempre texto descriptivo.
-        """
         try:
-            # Convertir a entero si es necesario
             if isinstance(media_val, str):
                 try:
                     media_val = int(media_val)
                 except ValueError:
-                    return "Tipo de Media Desconocido"
-            
-            # Usar el mapeo oficial de la API
-            description = MEDIA_TYPE_MAP.get(media_val)
-            
-            if description:
-                return description
-            else:
-                # Si no se encuentra, devolver descripción genérica (nunca un número)
-                return f"Tipo de Media Desconocido ({media_val})"
-                
-        except Exception as e:
-            logger.error(f"Error obteniendo descripción de media {media_val}: {e}")
-            return "Tipo de Media Error"
-    
-    def _find_record_by_id(self, record_id):
-        """Buscar registro por ID de manera robusta"""
-        for i, record in enumerate(self.current_records):
-            if isinstance(record, dict):
-                # Buscar por systemid, storageid o índice
-                if (record.get('systemid') == record_id or 
-                    record.get('storageid') == record_id):
-                    return record
-            elif isinstance(record, str):
-                # Para strings, usar el índice
-                if f'record_{i}' == record_id:
-                    return {
-                        'name': f'Resultado {i+1}',
-                        'type': 1,
-                        'media': 1,
-                        'bucket': 'unknown',
-                        'size': len(record),
-                        'date': '',
-                        'xscore': 0,
-                        'systemid': f'record_{i}',
-                        'data': record
-                    }
-        return None
+                    return "Media Desconocido"
+            return MEDIA_TYPE_MAP.get(media_val, f"Media ({media_val})")
+        except Exception:
+            return "Error"
 
     def _format_file_size(self, size):
-        """Formatear tamaño de archivo en formato legible"""
         if not size or size == 0:
             return "0 B"
-        
         try:
             size = int(size)
             for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -909,357 +1022,227 @@ class IntelXCheckerApp(ctk.CTk):
         except (ValueError, TypeError):
             return str(size)
 
-    def _search_finished(self):
-        """Finalizar búsqueda"""
-        self.search_button.configure(state="normal")
-        self.cancel_button.configure(state="disabled")
-        self.stop_search = False
-        # Resetear barra de progreso después de un momento
-        if hasattr(self, "progress_bar"):
-            self.after(2000, lambda: self.progress_bar.set(0))
-        if hasattr(self, "progress_label"):
-            self.after(2000, lambda: self.progress_label.configure(text=""))
-        # Actualizar créditos después de la búsqueda
-        self.after(1000, self.refresh_credits)
-    
-    def cancel_search(self):
-        """Cancelar búsqueda"""
-        self.stop_search = True
-        # Señalar al evento de cancelación si existe
-        if hasattr(self, 'cancel_event') and self.cancel_event:
-            self.cancel_event.set()
-        if hasattr(self, "status_label"):
-            self.status_label.configure(text="Búsqueda cancelada")
-        if hasattr(self, "progress_label"):
-            self.progress_label.configure(text="Cancelado")
-        self._search_finished()
-    
-    def filter_results(self, event=None):
-        """Filtrar resultados usando la nueva estructura de columnas"""
-        filter_text = self.filter_entry.get().lower()
-        
-        # Limpiar treeview
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
-        
-        # Volver a poblar con filtro
-        for i, record in enumerate(self.current_records):
-            # Manejar diferentes tipos de datos de entrada
-            if isinstance(record, str):
-                record_dict = {
-                    'name': f'Resultado {i+1}',
-                    'type': 1,
-                    'media': 1,
-                    'bucket': 'unknown',
-                    'size': len(record),
-                    'date': '',
-                    'xscore': 0,
-                    'systemid': f'record_{i}',
-                    'data': record
-                }
-            elif isinstance(record, dict):
-                record_dict = record
-            else:
-                record_dict = {
-                    'name': f'Resultado {i+1}',
-                    'type': 0,
-                    'media': 0,
-                    'bucket': 'unknown',
-                    'size': 0,
-                    'date': '',
-                    'xscore': 0,
-                    'systemid': f'record_{i}',
-                    'data': str(record)
-                }
-            
-            # Buscar en todos los campos del registro
-            record_data = str(record_dict).lower()
-            name = record_dict.get('name', f'Documento {i+1}').lower()
-            bucket = record_dict.get('bucket', '').lower()
-            
-            if (filter_text in record_data or 
-                filter_text in name or 
-                filter_text in bucket):
-                
-                # Fecha formateada (primera prioridad)
-                date_str = record_dict.get('date', '')
-                if date_str:
-                    try:
-                        date_text = date_str[:19] if len(date_str) > 19 else date_str
-                    except:
-                        date_text = date_str
-                else:
-                    date_text = 'N/A'
-                
-                # Recrear la entrada usando los nuevos campos
-                name_display = record_dict.get('name', f'Documento {i+1}')
-                name_display = name_display[:60] + "..." if len(name_display) > 60 else name_display
-                
-                # Extraer IP
-                ip_address = self._extract_ip_address(record_dict)
-                
-                type_val = record_dict.get('type', 0)
-                type_text = self._get_type_description(type_val)
-                
-                media_val = record_dict.get('media', 0)
-                media_text = self._get_media_description(media_val)
-                
-                bucket = record_dict.get('bucket', 'unknown')
-                bucket_text = record_dict.get('bucketh', bucket)
-                
-                size = record_dict.get('size', 0)
-                size_text = self._format_file_size(size)
-                
-                score = record_dict.get('xscore', 0)
-                score_text = str(score) if score > 0 else 'N/A'
-                
-                system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
-                
-                # Nuevo orden: fecha, nombre, IP, tipo, media, bucket, tamaño, score, systemid
-                self.results_tree.insert("", "end", values=(
-                    date_text, name_display, ip_address, type_text, media_text, 
-                    bucket_text, size_text, score_text, system_id
-                ))
-    
-    def refresh_credits(self):
-        """Actualizar créditos usando la API real"""
-        if not self.api_key:
-            return
-            
-        try:
-            logger.info("Actualizando créditos desde la API...")
-            success, credits_or_error = get_api_credits(self.api_key)
-            
-            if success:
-                old_credits = getattr(self, 'credits', 0)
-                self.credits = credits_or_error
-                lang = self.languages.get(self.current_language, self.languages["es"])
-                self.credits_label.configure(text=f"{lang['Créditos']} {self.credits}")
-                
-                if old_credits != self.credits:
-                    logger.info(f"Créditos actualizados: {old_credits} → {self.credits}")
-                else:
-                    logger.info(f"Créditos confirmados: {self.credits}")
-            else:
-                logger.error(f"Error obteniendo créditos: {credits_or_error}")
-                lang = self.languages.get(self.current_language, self.languages["es"])
-                self.credits_label.configure(text=f"{lang['Créditos']} Error")
-                
-        except Exception as e:
-            logger.exception("Error obteniendo créditos")
-            lang = self.languages.get(self.current_language, self.languages["es"])
-            self.credits_label.configure(text=f"{lang['Créditos']} Error")
-    
-    def manage_api_key(self):
-        """Gestionar clave API"""
-        dialog = ui_components.ApiKeyDialog(self, self.api_key)
-        new_key = dialog.get_result()
-        
-        if new_key is not None:
-            self.api_key = new_key
-            try:
-                save_stored_api_key(self.api_key, self.config_file)
-                if self.api_key:
-                    self.refresh_credits()
-            except Exception as e:
-                logger.exception("Error guardando API key")
-    
-    def open_intelx_api_page(self):
-        """Abrir página de API de IntelX"""
-        webbrowser.open("https://intelx.io/account?tab=developer")
-    
-    def show_about(self):
-        """Mostrar información sobre la aplicación"""
-        ui_components.AboutDialog(self, self.app_version, self.current_language)
-    
-    # Event handlers
-    def on_item_double_click(self, event):
-        """Manejar doble clic en item"""
-        self.preview_selected()
-    
-    def show_context_menu(self, event):
-        """Mostrar menú contextual"""
-        try:
-            self.context_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.context_menu.grab_release()
-    
-    def preview_selected(self):
-        """Preview del item seleccionado"""
-        selection = self.results_tree.selection()
-        if not selection:
-            return
-            
-        # Obtener datos del item seleccionado
-        item = self.results_tree.item(selection[0])
-        values = item['values']
-        
-        if values:
-            record_id = values[-1]  # El systemid está en la última columna
-            # Buscar record completo usando la función auxiliar
-            record = self._find_record_by_id(record_id)
-            
-            if record:
-                # Crear ventana de preview (implementar según necesidades)
-                self._show_preview_window(record)
-    
-    def _show_preview_window(self, record):
-        """Mostrar ventana de preview"""
-        preview_window = ui_components.PreviewWindow(self, record)
-        self.preview_windows[record.get('storageid', '')] = preview_window
-    
-    def _on_preview_close(self, storage_id):
-        """Callback cuando se cierra preview"""
-        if storage_id in self.preview_windows:
-            del self.preview_windows[storage_id]
-    
-    def select_all(self):
-        """Seleccionar todos los items"""
-        for item in self.results_tree.get_children():
-            self.results_tree.selection_add(item)
-    
-    def deselect_all(self):
-        """Deseleccionar todos los items"""
-        self.results_tree.selection_remove(self.results_tree.selection())
-    
-    def copy_selected(self):
-        """Copiar selección al clipboard"""
-        selection = self.results_tree.selection()
-        if not selection:
-            return
-            
-        copied_data = []
-        for item_id in selection:
-            item = self.results_tree.item(item_id)
-            copied_data.append('\t'.join(str(v) for v in item['values']))
-        
-        self.clipboard_clear()
-        self.clipboard_append('\n'.join(copied_data))
-    
-    def export_selection(self):
-        """Exportar selección"""
-        selection = self.results_tree.selection()
-        if not selection:
-            ui_components.show_custom_messagebox(self, "Error", "No hay elementos seleccionados", "warning")
-            return
-        
-        # Obtener records seleccionados
-        selected_records = []
-        for item_id in selection:
-            item = self.results_tree.item(item_id)
-            values = item['values']
-            if values:
-                record_id = values[-1]  # El systemid está en la última columna
-                record = self._find_record_by_id(record_id)
-                if record:
-                    selected_records.append(record)
-        
-        if selected_records:
-            # Usar dialogo de exportación
-            ui_components.show_export_selection_dialog(self, selected_records)
+    # --- Filter ---
+    def filter_results(self, text):
+        filter_text = text.lower() if text else ""
+        for row in range(self.table.rowCount()):
+            show = True
+            if filter_text:
+                show = False
+                for col in range(self.table.columnCount()):
+                    item = self.table.item(row, col)
+                    if item and filter_text in item.text().lower():
+                        show = True
+                        break
+            self.table.setRowHidden(row, not show)
 
-    # --- Export methods (using modular architecture) ---
-    def export_to_pdf_safe(self):
-        """Exportar resultados o la selección actual a un informe PDF."""
+    # --- Sort ---
+    # Sorting is handled natively by QTableWidget with setSortingEnabled(True)
+
+    # --- Table Events ---
+    def on_item_double_click(self, index):
+        self.preview_selected()
+
+    def show_context_menu(self, pos):
+        menu = QMenu(self)
+        action_preview = menu.addAction("Vista Previa")
+        menu.addSeparator()
+        action_select_all = menu.addAction("Seleccionar Todo")
+        action_deselect = menu.addAction("Deseleccionar")
+        menu.addSeparator()
+        action_copy = menu.addAction("Copiar")
+        action_export = menu.addAction("Exportar Selección")
+
+        action_preview.triggered.connect(self.preview_selected)
+        action_select_all.triggered.connect(self.select_all)
+        action_deselect.triggered.connect(self.deselect_all)
+        action_copy.triggered.connect(self.copy_selected)
+        action_export.triggered.connect(self.export_selection)
+
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def preview_selected(self):
+        selection = self.table.selectionModel().selectedRows()
+        if not selection:
+            return
+        row = selection[0].row()
+        system_id = self.table.item(row, 8).text()
+        record = self._find_record_by_id(system_id)
+        if record:
+            from ui_components import PreviewWindow
+            PreviewWindow(self, record)
+
+    def _find_record_by_id(self, record_id):
+        for i, record in enumerate(self.current_records):
+            if isinstance(record, dict):
+                if (record.get('systemid') == record_id or
+                    record.get('storageid') == record_id):
+                    return record
+            elif isinstance(record, str):
+                if f'record_{i}' == record_id:
+                    return {
+                        'name': f'Resultado {i+1}', 'type': 1, 'media': 1,
+                        'bucket': 'unknown', 'size': len(record), 'date': '',
+                        'xscore': 0, 'systemid': f'record_{i}', 'data': record
+                    }
+        return None
+
+    def select_all(self):
+        self.table.selectAll()
+
+    def deselect_all(self):
+        self.table.clearSelection()
+
+    def copy_selected(self):
+        selection = self.table.selectionModel().selectedRows()
+        if not selection:
+            return
+        lines = []
+        headers = [self.table.horizontalHeaderItem(c).text() for c in range(self.table.columnCount())]
+        lines.append('\t'.join(headers))
+        for idx in selection:
+            row = idx.row()
+            row_data = []
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                row_data.append(item.text() if item else "")
+            lines.append('\t'.join(row_data))
+        QApplication.clipboard().setText('\n'.join(lines))
+
+    def export_selection(self):
+        selection = self.table.selectionModel().selectedRows()
+        if not selection:
+            QMessageBox.warning(self, "Error", t("No hay elementos seleccionados", self.current_language))
+            return
+        selected_records = []
+        for idx in selection:
+            row = idx.row()
+            system_id = self.table.item(row, 8).text()
+            record = self._find_record_by_id(system_id)
+            if record:
+                selected_records.append(record)
+        if selected_records:
+            from ui_components import show_export_selection_dialog
+            show_export_selection_dialog(self, selected_records)
+
+    # --- History ---
+    def _clear_history(self):
+        reply = QMessageBox.question(
+            self, "Limpiar Historial",
+            "¿Está seguro de que desea eliminar todo el historial de resultados? Esta acción no se puede deshacer.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.current_records = []
+            save_history([])
+            self.table.setRowCount(0)
+            self._update_kpi_cards()
+            self.status_label.setText(t("Historial limpiado", self.current_language))
+
+    # --- Export Methods ---
+    def export_to_csv_safe(self):
         try:
             if not self.current_records:
-                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                QMessageBox.warning(self, "Sin Datos", t("No hay resultados para exportar", self.current_language))
                 return
-
-            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
-            records_to_export = ui_components.get_records_to_export_dialog(
-                self, self.current_records, selected_ids
-            )
-            if not records_to_export:
-                return
-
-            search_term = self.term_entry.get().strip() or 'IntelX Export'
-            filepath = exports_module.generate_pdf_report(records_to_export, title=search_term)
-            ui_components.show_export_success_dialog(self, filepath)
-            return filepath
-        except Exception as e:
-            logger.exception('Error exporting PDF')
-            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando PDF: {e}', 'error')
-
-    def export_to_csv_safe(self):
-        """Exportar a CSV usando módulo de exportación"""
-        try:
-            # Get selection if any
-            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
-            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
-            if not records_to_export:
-                return
-
-            # Get search term for filename
-            search_term = self.term_entry.get().strip() or 'IntelX_Export'
-
-            filepath = exports_module.export_to_csv(records_to_export, search_term)
-            ui_components.show_export_success_dialog(self, filepath)
-            return filepath
+            search_term = self.term_entry.text().strip() or 'IntelX_Export'
+            filepath = exports_module.export_to_csv(self.current_records, search_term)
+            if filepath:
+                reply = QMessageBox.question(
+                    self, "Exportación Exitosa",
+                    f"Archivo exportado: {os.path.basename(filepath)}\n\n¿Desea abrir la carpeta?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    os.startfile(os.path.dirname(filepath))
         except Exception as e:
             logger.exception('Error exporting CSV')
-            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando CSV: {e}', 'error')
+            QMessageBox.critical(self, 'Error', f'Error exportando CSV: {e}')
 
     def export_to_json_safe(self):
-        """Exportar a JSON usando módulo de exportación"""
         try:
             if not self.current_records:
-                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                QMessageBox.warning(self, "Sin Datos", t("No hay resultados para exportar", self.current_language))
                 return
-            
-            # Get selection if any  
-            selected_ids = list(self.results_tree.selection()) if hasattr(self, 'results_tree') else []
-            
-            # Ask user what to export if there are selections
-            records_to_export = ui_components.get_records_to_export_dialog(self, self.current_records, selected_ids)
-            if not records_to_export:
-                return
-                
-            # Get search term for filename
-            search_term = self.term_entry.get().strip() or 'IntelX_Export'
-                
-            filepath = exports_module.export_to_json(records_to_export, search_term)
-            ui_components.show_export_success_dialog(self, filepath)
-            return filepath
+            search_term = self.term_entry.text().strip() or 'IntelX_Export'
+            filepath = exports_module.export_to_json(self.current_records, search_term)
+            if filepath:
+                reply = QMessageBox.question(
+                    self, "Exportación Exitosa",
+                    f"Archivo exportado: {os.path.basename(filepath)}\n\n¿Desea abrir la carpeta?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    os.startfile(os.path.dirname(filepath))
         except Exception as e:
             logger.exception('Error exporting JSON')
-            ui_components.show_custom_messagebox(self, 'Error', f'Error exportando JSON: {e}', 'error')
+            QMessageBox.critical(self, 'Error', f'Error exportando JSON: {e}')
 
-    def export_to_html_safe(self):
-        """Generate an interactive HTML report with modern features"""
+    def export_to_pdf_safe(self):
         try:
             if not self.current_records:
-                ui_components.show_custom_messagebox(self, "Sin Datos", "No hay resultados para exportar.", "warning")
+                QMessageBox.warning(self, "Sin Datos", t("No hay resultados para exportar", self.current_language))
                 return
+            search_term = self.term_entry.text().strip() or 'IntelX Export'
+            filepath = exports_module.generate_pdf_report(self.current_records, title=search_term)
+            if filepath:
+                reply = QMessageBox.question(
+                    self, "Exportación Exitosa",
+                    f"Archivo exportado: {os.path.basename(filepath)}\n\n¿Desea abrir la carpeta?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    os.startfile(os.path.dirname(filepath))
+        except Exception as e:
+            logger.exception('Error exporting PDF')
+            QMessageBox.critical(self, 'Error', f'Error exportando PDF: {e}')
 
-            search_term = self.term_entry.get().strip() or "búsqueda_sin_nombre"
-
-            # Use the new interactive HTML export
+    def export_to_html_safe(self):
+        try:
+            if not self.current_records:
+                QMessageBox.warning(self, "Sin Datos", t("No hay resultados para exportar", self.current_language))
+                return
+            search_term = self.term_entry.text().strip() or "búsqueda_sin_nombre"
             from exports import export_to_interactive_html
-            
             filepath = export_to_interactive_html(
                 records=self.current_records,
                 search_term=search_term,
                 app_version="2.0.0"
             )
-
-            # Show success dialog
-            ui_components.show_export_success_dialog(self, filepath)
-            
-            # Ask if user wants to open
-            if ui_components.show_custom_question_dialog(self, "Reporte HTML Interactivo", 
-                                                       "¿Desea abrir el reporte interactivo en su navegador?"):
-                open_in_browser(filepath)
-
-            logger.info(f"Reporte HTML interactivo generado: {filepath}")
-            return filepath
-
+            if filepath:
+                reply = QMessageBox.question(
+                    self, "Reporte HTML Interactivo",
+                    "¿Desea abrir el reporte interactivo en su navegador?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    open_in_browser(filepath)
         except Exception as e:
             logger.exception("Error generando reporte HTML interactivo")
-            ui_components.show_custom_messagebox(self, "Error", f"Error generando reporte: {e}", "error")
+            QMessageBox.critical(self, "Error", f"Error generando reporte: {e}")
+
+    # --- Close ---
+    def closeEvent(self, event):
+        logger.info("Cerrando la aplicación...")
+        if self.preview_windows:
+            for sid in list(self.preview_windows.keys()):
+                try:
+                    w = self.preview_windows[sid]
+                    if hasattr(w, 'close'):
+                        w.close()
+                except Exception:
+                    pass
+        event.accept()
 
 
-# Provide compatibility for scripts that import the class directly
+def main():
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    init_icons()
+    win = MainWindow()
+    win.show()
+    sys.exit(app.exec())
+
+
 if __name__ == '__main__':
-    app = IntelXCheckerApp()
-    app.mainloop()
+    main()
