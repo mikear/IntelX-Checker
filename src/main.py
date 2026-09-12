@@ -15,7 +15,7 @@ def run_cli_mode(args) -> int:
     """Executes an IntelX search in CLI mode without launching the GUI."""
     logger = logging.getLogger("IntelX_CLI")
     print("=== IntelX Checker - CLI Mode ===")
-    
+
     api_key = args.api_key or get_stored_api_key()
     if not api_key:
         print("❌ Error: No API key found. Provide it with --api-key or configure INTELX_API_KEY env/keyring.")
@@ -23,7 +23,7 @@ def run_cli_mode(args) -> int:
 
     search_term = args.search
     print(f"🔍 Searching for: {search_term} ...")
-    
+
     success, data_or_err, search_id = check_intelx(search_term, api_key)
     if not success:
         print(f"❌ Search failed: {data_or_err}")
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--export", type=str, choices=["json", "csv", "html", "pdf"], default="json", help="Export format in CLI mode")
     parser.add_argument("-o", "--output-dir", type=str, help="Directory to save exported results")
     parser.add_argument("-k", "--api-key", type=str, help="IntelX API Key (optional override)")
-    
+
     args = parser.parse_args()
     # Configuración de logging para archivo y consola
     logging.basicConfig(
