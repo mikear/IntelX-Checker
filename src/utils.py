@@ -46,18 +46,21 @@ def open_in_browser(path: str) -> None:
 def _get_record_key(record: dict) -> str:
     """Extrae una clave única de un registro para deduplicación.
 
-    Usa 'id' si existe, si no combina 'name' + 'storage'.
+    Usa 'systemid' o 'storageid' como identificador principal.
+    Fallback: combinación de 'name' + 'bucket'.
     """
     if not isinstance(record, dict):
         return str(record)
 
-    record_id = record.get('id')
-    if record_id is not None:
-        return f"id:{record_id}"
+    # Identificador único real de IntelX
+    system_id = record.get('systemid') or record.get('storageid')
+    if system_id is not None:
+        return f"sid:{system_id}"
 
+    # Fallback: name + bucket (más específico que name + storage)
     name = record.get('name', '')
-    storage = record.get('storage', '')
-    return f"name:{name}|storage:{storage}"
+    bucket = record.get('bucket', '')
+    return f"name:{name}|bucket:{bucket}"
 
 
 def merge_records(existing: list, new: list) -> list:
