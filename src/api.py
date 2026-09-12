@@ -11,7 +11,7 @@ from datetime import datetime, timezone, MINYEAR, MAXYEAR
 from typing import Optional, Tuple, List, Dict, Any, Union
 
 # --- Constantes API ---
-INTELX_API_URL_BASE = "https://free.intelx.io"
+INTELX_API_URL_BASE = "https://2.intelx.io"
 INTELX_API_URL_SEARCH = f"{INTELX_API_URL_BASE}/intelligent/search"
 INTELX_API_URL_RESULT = f"{INTELX_API_URL_BASE}/intelligent/search/result"
 INTELX_API_URL_STATUS = f"{INTELX_API_URL_BASE}/intelligent/search/status"
@@ -89,6 +89,7 @@ def check_intelx(
     """
     if not search_term:
         return False, "Introduce un término de búsqueda válido.", None
+    api_key = (api_key or "").strip()
     if not api_key:
         return False, "La clave API de IntelX no ha sido proporcionada.", None
 
@@ -304,6 +305,7 @@ def get_api_credits(api_key: str) -> Tuple[bool, Union[int, str]]:
     Returns:
         Tuple[bool, Union[int, str]]: (success, credits_or_error_message)
     """
+    api_key = (api_key or "").strip()
     if not api_key:
         return False, "Clave API no proporcionada"
     
