@@ -829,18 +829,19 @@ class StyleGenerator:
         #resultsTable {
             width: 100%;
             border-collapse: collapse;
-            background: white;
+            background: #1e293b;
+            color: #f1f5f9;
         }
 
         #resultsTable th {
             background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            color: white;
+            color: #ffffff;
             padding: 1rem 0.75rem;
             text-align: left;
             font-weight: 600;
             font-size: 0.875rem;
             letter-spacing: 0.025em;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid #334155;
         }
 
         #resultsTable th.sortable {
@@ -860,20 +861,25 @@ class StyleGenerator:
 
         #resultsTable td {
             padding: 0.75rem;
-            border-bottom: 1px solid #f3f4f6;
+            border-bottom: 1px solid #334155;
             font-size: 0.875rem;
+            color: #f1f5f9;
+        }
+
+        #resultsTable tbody tr {
+            background: #1e293b;
         }
 
         #resultsTable tbody tr:hover {
-            background: #f9fafb;
+            background: #334155;
         }
 
         #resultsTable tbody tr:nth-child(even) {
-            background: #fafafa;
+            background: #253247;
         }
 
         #resultsTable tbody tr:nth-child(even):hover {
-            background: #f3f4f6;
+            background: #334155;
         }
 
         /* Table cell specific styles */
