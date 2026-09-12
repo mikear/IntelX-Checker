@@ -270,16 +270,20 @@ class IntelXCheckerApp(ctk.CTk):
         )
         self.credits_label.pack(side="right", padx=(5, 15))
         
-        # Configuración completa del estilo ttk.Treeview
+        # Configuración completa del estilo ttk.Treeview adaptativo al tema
+        is_dark = ctk.get_appearance_mode() == "Dark"
+        tree_bg = "#1e293b" if is_dark else "#ffffff"
+        tree_fg = "#f1f5f9" if is_dark else "#1e293b"
+
         style = ttk.Style()
         style.theme_use("clam")
         style.configure(
             "Custom.Treeview",
-            rowheight=38,
+            rowheight=32,
             font=("Segoe UI", 11),
-            background="#ffffff",
-            fieldbackground="#ffffff",
-            foreground="#1e293b",
+            background=tree_bg,
+            fieldbackground=tree_bg,
+            foreground=tree_fg,
             borderwidth=0,
             relief="flat"
         )
@@ -293,7 +297,7 @@ class IntelXCheckerApp(ctk.CTk):
         )
         style.map(
             "Custom.Treeview",
-            background=[("selected", "#818cf8")],
+            background=[("selected", "#6366f1")],
             foreground=[("selected", "white")]
         )
         style.map(
@@ -724,10 +728,18 @@ class IntelXCheckerApp(ctk.CTk):
             system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
 
             # Nuevo orden: fecha, nombre, IP, tipo, media, bucket, tamaño, score, systemid
+            tag = "even" if i % 2 == 0 else "odd"
             self.results_tree.insert("", "end", values=(
                 date_text, name, ip_address, type_text, media_text, 
                 bucket_text, size_text, score_text, system_id
-            ))
+            ), tags=(tag,))
+
+        is_dark = ctk.get_appearance_mode() == "Dark"
+        even_bg = "#1e293b" if is_dark else "#ffffff"
+        odd_bg = "#253247" if is_dark else "#f1f5f9"
+        text_fg = "#f1f5f9" if is_dark else "#1e293b"
+        self.results_tree.tag_configure("even", background=even_bg, foreground=text_fg)
+        self.results_tree.tag_configure("odd", background=odd_bg, foreground=text_fg)
     
     def _extract_ip_address(self, record_dict):
         """Extraer dirección IP del registro"""
