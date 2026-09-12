@@ -5,6 +5,10 @@
 > **IntelX Checker** — Aplicación avanzada para investigar filtraciones de datos y fuentes OSINT. Busca, visualiza y exporta resultados de Intelligence X en una interfaz moderna y profesional con **reportes interactivos SVG**.
 
 ## 🆕 Nuevas Características V2.1
+-   **Acumulación de Resultados:** Las búsquedas acumulan hallazgos sin duplicados. Cada nueva consulta agrega resultados nuevos a los existentes.
+-   **Persistencia de Datos:** Los resultados se guardan automáticamente en `data/history.json` y sobreviven reinicios de la aplicación.
+-   **Deduplicación Inteligente:** Los registros se deduplican por `systemid`/`storageid` para evitar resultados repetidos.
+-   **Limpiar Historial:** Opción en menú `Archivo > Limpiar Historial` para borrar todos los resultados acumulados.
 - 📊 **Reportes Interactivos SVG:** Gráficos standalone sin dependencias externas
 - 🎯 **3 Visualizaciones Clave:** Distribución de tipos, fuentes principales y evolución temporal (5 años)
 - 📱 **Diseño Completamente Responsivo:** Funciona perfectamente en cualquier dispositivo
@@ -32,6 +36,8 @@ Esta herramienta es un proyecto de código abierto. Si te resulta útil, conside
 
 ## Características Destacadas
 - 🔍 **Búsqueda Potente:** Realiza búsquedas en la API de Intelligence X por correo electrónico o dominio.
+-   **Acumulación de Resultados:** Las búsquedas se acumulan sin duplicados. Cada nueva consulta agrega hallazgos nuevos a los existentes.
+-   **Persistencia Automática:** Los resultados se guardan en disco y sobreviven reinicios de la aplicación.
 - 🎯 **Filtro de Fuentes:** Selecciona las fuentes de datos (buckets) específicas en las que deseas buscar.
 - 📊 **Reportes SVG Interactivos:** Gráficos modernos sin dependencias JavaScript externas.
 - 💾 **Exportación Versátil:** Exporta a CSV, JSON y **HTML interactivo** para análisis posterior.
@@ -148,15 +154,20 @@ Para funcionar, la aplicación necesita tu clave de API de Intelligence X.
     - Introduce el correo o dominio en el campo de búsqueda.
     - Haz clic en `Buscar`.
     - Los resultados aparecerán en la tabla.
+    - **Los resultados se acumulan:** cada nueva búsqueda agrega hallazgos nuevos a los existentes sin duplicar.
 4. **Exporta resultados:**
-    - Usa el menú `Archivo` para exportar a CSV o JSON.
-5. **Consulta el manual y glosario:**
+    - Usa el menú `Archivo` para exportar a CSV, JSON, PDF o HTML interactivo.
+5. **Limpiar historial:**
+    - Si deseas empezar de cero, ve a `Archivo` > `Limpiar Historial`.
+6. **Consulta el manual y glosario:**
     - Accede desde el menú `Ayuda` y visualízalos en ventanas internas con scroll.
 
 ## 📁 Estructura de Carpetas
-- `intelx/` : Lógica de API y GUI
+- `src/` : Código fuente (API, GUI, utilidades)
+- `data/` : Historial de resultados (generado automáticamente)
 - `docs/` : Manual, glosario, icono
 - `exports/csv` : Resultados exportados
+- `reports/` : Reportes generados
 - `requirements.txt` : Dependencias
 - `docs/assets/` : Prints de pantalla y recursos gráficos
 
