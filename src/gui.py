@@ -560,6 +560,7 @@ class IntelXCheckerApp(ctk.CTk):
         
         self.current_records = []
         self.stop_search = False
+        self.cancel_event = threading.Event()
         
         # Actualizar UI
         self.search_button.configure(state="disabled")
@@ -587,8 +588,10 @@ class IntelXCheckerApp(ctk.CTk):
             if hasattr(self, "status_label"):
                 self.after(0, lambda: self.status_label.configure(text="Conectando con IntelX..."))
             
-            # Usar módulo API - la función check_intelx ahora retorna (success, data, search_id)
-            success, data_or_error, search_id = check_intelx(term, self.api_key)
+            # Usar módulo API con cancel_event para responder de inmediato al botón Cancelar
+            success, data_or_error, search_id = check_intelx(
+                term, self.api_key, cancel_event=self.cancel_event
+            )
             
             # Progreso medio
             if hasattr(self, "progress_bar"):

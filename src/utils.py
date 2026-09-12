@@ -3,6 +3,8 @@ import os
 import webbrowser
 
 
+import re
+
 def sanitize_filename(s: str) -> str:
     """Sanitizes a string for use as a valid filename.
 
@@ -12,9 +14,11 @@ def sanitize_filename(s: str) -> str:
     Returns:
         Sanitized filename string.
     """
-    if not s:
+    if not s or not isinstance(s, str):
         return 'search'
-    return s.replace('@', '_at_').replace('.', '_dot_').replace(' ', '_')
+    s_clean = s.replace('@', '_at_').replace('.', '_dot_').replace(' ', '_')
+    s_clean = re.sub(r'[^a-zA-Z0-9_\-]', '', s_clean)
+    return s_clean or 'search'
 
 
 def open_in_browser(path: str) -> None:

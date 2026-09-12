@@ -146,11 +146,15 @@ def check_intelx(
         return success_retrieve, data_retrieve, search_id
 
     except requests.exceptions.HTTPError as err:
-        status_code = err.response.status_code
-        try:
-            error_detail = err.response.json().get('error', err.response.text)
-        except json.JSONDecodeError:
-            error_detail = err.response.text
+        status_code = err.response.status_code if err.response is not None else 500
+        error_detail = ""
+        if err.response is not None:
+            try:
+                error_detail = err.response.json().get('error', err.response.text)
+            except (json.JSONDecodeError, AttributeError):
+                error_detail = err.response.text
+        else:
+            error_detail = str(err)
         logging.error(f"Error HTTP {status_code} al iniciar búsqueda: {error_detail}")
         error_message = f"Error IntelX {status_code}"
         if status_code == 401:
@@ -158,7 +162,7 @@ def check_intelx(
         elif status_code == 402:
             error_message += ": Créditos insuficientes."
         else:
-            error_message += f": {error_detail[:100]}"
+            error_message += f": {error_detail[:100]}" if error_detail else "."
         return False, error_message, search_id
     except requests.exceptions.Timeout:
         logging.error(f"Timeout ({REQUEST_TIMEOUT_SEARCH}s) al iniciar la búsqueda.")
@@ -211,8 +215,8 @@ def retrieve_intelx_results(
                 return True, results_data
 
             except requests.exceptions.HTTPError as err:
-                status_code = err.response.status_code
-                resp_text = err.response.text
+                status_code = err.response.status_code if err.response is not None else 500
+                resp_text = err.response.text if err.response is not None else str(err)
                 logging.error(f"Error HTTP {status_code} obteniendo resultados para {search_id}: {resp_text}")
                 msg = f"Error {status_code} obteniendo resultados"
                 if status_code == 404: msg += " (Búsqueda no encontrada o expirada)."
@@ -273,8 +277,8 @@ def retrieve_intelx_results(
                     logging.debug(f"ID {search_id}: Estado sigue siendo {current_status}.")
 
             except requests.exceptions.HTTPError as err:
-                status_code = err.response.status_code
-                resp_text = err.response.text
+                status_code = err.response.status_code if err.response is not None else 500
+                resp_text = err.response.text if err.response is not None else str(err)
                 logging.error(f"Error HTTP {status_code} verificando estado {search_id}: {resp_text}")
                 msg = f"Error {status_code} verificando estado"
                 if status_code == 404: msg += " (ID de búsqueda no encontrado)."
@@ -339,11 +343,15 @@ def get_api_credits(api_key: str) -> Tuple[bool, Union[int, str]]:
         return True, credits
         
     except requests.exceptions.HTTPError as err:
-        status_code = err.response.status_code
-        try:
-            error_detail = err.response.json().get('error', err.response.text)
-        except json.JSONDecodeError:
-            error_detail = err.response.text
+        status_code = err.response.status_code if err.response is not None else 500
+        error_detail = ""
+        if err.response is not None:
+            try:
+                error_detail = err.response.json().get('error', err.response.text)
+            except (json.JSONDecodeError, AttributeError):
+                error_detail = err.response.text
+        else:
+            error_detail = str(err)
         
         logging.error(f"Error HTTP {status_code} obteniendo créditos: {error_detail}")
         
@@ -352,7 +360,7 @@ def get_api_credits(api_key: str) -> Tuple[bool, Union[int, str]]:
         elif status_code == 402:
             return False, "Sin créditos disponibles"
         else:
-            return False, f"Error {status_code}: {error_detail[:100]}"
+            return False, f"Error {status_code}: {error_detail[:100]}" if error_detail else f"Error {status_code}"
             
     except requests.exceptions.Timeout:
         logging.error(f"Timeout ({REQUEST_TIMEOUT_AUTH}s) obteniendo créditos.")
