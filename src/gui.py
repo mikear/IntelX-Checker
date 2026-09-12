@@ -56,30 +56,57 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+ctk.set_default_color_theme("blue")
+
 class IntelXCheckerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.preview_windows = {}
         self.title("IntelX Checker V2")
-        self.geometry("800x600")
-        self.minsize(600, 400)
+        self.geometry("1020x700")
+        self.minsize(700, 500)
         self.current_language = "es"
         self.app_version = "2.0.0"
+
+        # Paleta de colores comercial estilo Dashlane / 1Password / Notion
+        self.colors = {
+            "accent": "#6366f1",
+            "accent_hover": "#4f46e5",
+            "accent_light": "#818cf8",
+            "danger": "#ef4444",
+            "danger_hover": "#dc2626",
+            "success": "#22c55e",
+            "bg_main": ("#f8fafc", "#0f172a"),
+            "card": ("#ffffff", "#1e293b"),
+            "card_hover": ("#f1f5f9", "#273548"),
+            "border": ("#e2e8f0", "#334155"),
+            "text_primary": ("#1e293b", "#f1f5f9"),
+            "text_secondary": ("#64748b", "#94a3b8"),
+            "entry_bg": ("#ffffff", "#1e293b"),
+            "entry_border": ("#cbd5e1", "#475569"),
+            "entry_border_focus": ("#6366f1", "#818cf8"),
+        }
+
+        self.configure(fg_color=self.colors["bg_main"])
+        self.option_add("*CTkEntry*.placeholder*foreground", "#94a3b8")
         
         # Configurar icono de la aplicación
         self._set_application_icon()
         
-        # --- Fuentes por defecto ---
+        # --- Fuentes con Segoe UI ---
         self.fonts = {
-            "main": ("Arial", 14),
-            "main_bold": ("Arial", 14, "bold"),
-            "menu": ("Arial", 12),
-            "secondary": ("Arial", 11),
-            "tertiary": ("Arial", 10),
-            "tree_content": ("Arial", 11),
-            "tree_header": ("Arial", 12),
-            "dialog_header": ("Arial", 13),
-            "dialog_body": ("Arial", 11)
+            "title": ("Segoe UI", 20, "bold"),
+            "main": ("Segoe UI", 13),
+            "main_bold": ("Segoe UI", 13, "bold"),
+            "button": ("Segoe UI", 13, "bold"),
+            "menu": ("Segoe UI", 11),
+            "secondary": ("Segoe UI", 11),
+            "tertiary": ("Segoe UI", 10),
+            "entry": ("Segoe UI", 13),
+            "tree_content": ("Segoe UI", 11),
+            "tree_header": ("Segoe UI", 11, "bold"),
+            "dialog_header": ("Segoe UI", 13, "bold"),
+            "dialog_body": ("Segoe UI", 11)
         }
         
         # --- Multilenguaje ---
@@ -142,73 +169,157 @@ class IntelXCheckerApp(ctk.CTk):
     
     def _setup_ui(self):
         """Configurar interfaz de usuario"""
-        # Configurar grid principal con estética Glassmorphism / Frosted Card
+        # Contenedor raíz sin corner_radius para el layout principal
         main_frame = ctk.CTkFrame(
             self,
-            fg_color=("gray86", "gray17"),
-            border_color=("#e1e5ea", "#3e405b"),
+            fg_color=self.colors["bg_main"],
+            corner_radius=0
+        )
+        main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # Frame de búsqueda (Hero section)
+        search_frame = ctk.CTkFrame(
+            main_frame,
+            fg_color=self.colors["card"],
+            border_color=self.colors["border"],
             border_width=1,
             corner_radius=16
         )
-        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        search_frame.pack(fill="x", padx=0, pady=(0, 10), ipady=8)
         
-        # Frame de búsqueda
-        search_frame = ctk.CTkFrame(
-            main_frame,
-            fg_color=("gray86", "gray17"),
-            border_color=("#e1e5ea", "#3e405b"),
-            border_width=1,
-            corner_radius=12
+        self.search_label = ctk.CTkLabel(
+            search_frame,
+            text="Correo o Dominio:",
+            font=self.fonts["main_bold"],
+            text_color=self.colors["text_primary"]
         )
-        search_frame.pack(fill="x", padx=10, pady=(10, 5))
+        self.search_label.pack(side="left", padx=(15, 8))
         
-        # Label y entry para término de búsqueda
-        self.search_label = ctk.CTkLabel(search_frame, text="Correo o Dominio:", font=self.fonts["main"])
-        self.search_label.pack(side="left", padx=(10, 5))
-        
-        self.term_entry = ctk.CTkEntry(search_frame, font=self.fonts["main"], width=300)
+        self.term_entry = ctk.CTkEntry(
+            search_frame,
+            height=44,
+            corner_radius=22,
+            border_width=2,
+            border_color=self.colors["entry_border"],
+            fg_color=self.colors["entry_bg"],
+            font=self.fonts["entry"],
+            placeholder_text="🔍  Buscar email o dominio..."
+        )
         self.term_entry.pack(side="left", padx=5, expand=True, fill="x")
         self.term_entry.bind("<Return>", lambda e: self.search_intelx())
+        self.term_entry.bind("<FocusIn>", lambda e: self.term_entry.configure(border_color=self.colors["entry_border_focus"]))
+        self.term_entry.bind("<FocusOut>", lambda e: self.term_entry.configure(border_color=self.colors["entry_border"]))
+
+        self.search_button = ctk.CTkButton(
+            search_frame,
+            text="🔍  Buscar",
+            command=self.search_intelx,
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["accent_hover"],
+            corner_radius=22,
+            height=44,
+            width=150,
+            font=self.fonts["button"],
+            text_color="white"
+        )
+        self.search_button.pack(side="right", padx=(5, 15))
         
-        # Botones de búsqueda
-        self.search_button = ctk.CTkButton(search_frame, text="Buscar", command=self.search_intelx, font=self.fonts["main"])
-        self.search_button.pack(side="right", padx=(5, 10))
-        
-        self.cancel_button = ctk.CTkButton(search_frame, text="Cancelar", command=self.cancel_search, font=self.fonts["main"])
+        self.cancel_button = ctk.CTkButton(
+            search_frame,
+            text="✕  Cancelar",
+            command=self.cancel_search,
+            fg_color=self.colors["danger"],
+            hover_color=self.colors["danger_hover"],
+            corner_radius=22,
+            height=44,
+            width=150,
+            font=self.fonts["button"],
+            text_color="white"
+        )
         self.cancel_button.pack(side="right", padx=5)
         self.cancel_button.configure(state="disabled")
         
         # Frame de filtros
         filter_frame = ctk.CTkFrame(
             main_frame,
-            fg_color=("gray86", "gray17"),
-            border_color=("#e1e5ea", "#3e405b"),
+            fg_color=self.colors["card"],
+            border_color=self.colors["border"],
             border_width=1,
             corner_radius=12
         )
-        filter_frame.pack(fill="x", padx=10, pady=5)
+        filter_frame.pack(fill="x", padx=0, pady=5, ipady=4)
         
-        self.filter_entry = ctk.CTkEntry(filter_frame, placeholder_text="Filtrar resultados...", font=self.fonts["secondary"])
-        self.filter_entry.pack(side="left", padx=(10, 5), expand=True, fill="x")
+        self.filter_entry = ctk.CTkEntry(
+            filter_frame,
+            height=38,
+            corner_radius=19,
+            border_width=1,
+            border_color=self.colors["entry_border"],
+            fg_color=self.colors["entry_bg"],
+            placeholder_text="🔎  Filtrar resultados...",
+            font=self.fonts["secondary"]
+        )
+        self.filter_entry.pack(side="left", padx=(12, 5), expand=True, fill="x")
         self.filter_entry.bind("<KeyRelease>", self.filter_results)
         
-        # Label de créditos
-        self.credits_label = ctk.CTkLabel(filter_frame, text="Créditos: 0", font=self.fonts["secondary"])
-        self.credits_label.pack(side="right", padx=(5, 10))
+        self.credits_label = ctk.CTkLabel(
+            filter_frame,
+            text="Créditos: 0",
+            font=self.fonts["main_bold"],
+            text_color=self.colors["accent"]
+        )
+        self.credits_label.pack(side="right", padx=(5, 15))
         
+        # Configuración completa del estilo ttk.Treeview
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure(
+            "Custom.Treeview",
+            rowheight=38,
+            font=("Segoe UI", 11),
+            background="#ffffff",
+            fieldbackground="#ffffff",
+            foreground="#1e293b",
+            borderwidth=0,
+            relief="flat"
+        )
+        style.configure(
+            "Custom.Treeview.Heading",
+            font=("Segoe UI", 11, "bold"),
+            background="#6366f1",
+            foreground="white",
+            relief="flat",
+            padding=(10, 8)
+        )
+        style.map(
+            "Custom.Treeview",
+            background=[("selected", "#818cf8")],
+            foreground=[("selected", "white")]
+        )
+        style.map(
+            "Custom.Treeview.Heading",
+            background=[("active", "#4f46e5")]
+        )
+
         # Frame de resultados
         results_frame = ctk.CTkFrame(
             main_frame,
-            fg_color=("gray86", "gray17"),
-            border_color=("#e1e5ea", "#3e405b"),
+            fg_color=self.colors["card"],
+            border_color=self.colors["border"],
             border_width=1,
             corner_radius=12
         )
-        results_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        results_frame.pack(fill="both", expand=True, padx=0, pady=5)
         
         # Treeview para resultados con columnas reordenadas por prioridad
         columns = ("date", "name", "ip", "type", "media", "bucket", "size", "score", "systemid")
-        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="tree headings", height=15)
+        self.results_tree = ttk.Treeview(
+            results_frame,
+            columns=columns,
+            show="tree headings",
+            height=15,
+            style="Custom.Treeview"
+        )
         
         # Configurar columnas
         self.results_tree.heading("#0", text="", anchor="w")
@@ -251,30 +362,46 @@ class IntelXCheckerApp(ctk.CTk):
         self.results_tree.bind("<Double-1>", self.on_item_double_click)
         self.results_tree.bind("<Button-3>", self.show_context_menu)
         
-        # Status bar con barra de progreso
+        # Status bar refinado de alta calidad
         status_frame = ctk.CTkFrame(
             main_frame,
-            fg_color=("gray86", "gray17"),
-            border_color=("#e1e5ea", "#3e405b"),
-            border_width=1,
-            corner_radius=12
+            fg_color=("#f1f5f9", "#1e293b"),
+            corner_radius=0,
+            height=45
         )
-        status_frame.pack(fill="x", padx=10, pady=(5, 10))
+        status_frame.pack(fill="x", padx=0, pady=(5, 0))
         
-        self.status_label = ctk.CTkLabel(status_frame, text="Listo.", font=self.fonts["tertiary"])
-        self.status_label.pack(side="left", padx=(10, 5))
+        self.status_label = ctk.CTkLabel(
+            status_frame,
+            text="Listo.",
+            font=self.fonts["tertiary"],
+            text_color=self.colors["text_secondary"]
+        )
+        self.status_label.pack(side="left", padx=(15, 5), pady=8)
         
         # Frame para barra de progreso y texto
-        progress_container = ctk.CTkFrame(status_frame)
-        progress_container.pack(side="right", padx=(5, 10))
+        progress_container = ctk.CTkFrame(status_frame, fg_color="transparent")
+        progress_container.pack(side="right", padx=(5, 15), pady=8)
         
         # Etiqueta de progreso
-        self.progress_label = ctk.CTkLabel(progress_container, text="", font=self.fonts["tertiary"])
-        self.progress_label.pack(pady=(2, 0))
+        self.progress_label = ctk.CTkLabel(
+            progress_container,
+            text="",
+            font=self.fonts["tertiary"],
+            text_color=self.colors["text_secondary"]
+        )
+        self.progress_label.pack(side="left", padx=(0, 10))
         
-        # Barra de progreso mejorada
-        self.progress_bar = ctk.CTkProgressBar(progress_container, width=200, height=8)
-        self.progress_bar.pack(pady=(0, 2))
+        # Barra de progreso personalizada
+        self.progress_bar = ctk.CTkProgressBar(
+            progress_container,
+            width=250,
+            height=6,
+            corner_radius=3,
+            fg_color=("#e2e8f0", "#334155"),
+            progress_color=self.colors["accent"]
+        )
+        self.progress_bar.pack(side="right")
         if hasattr(self, "progress_bar"):
             self.progress_bar.set(0)
     
