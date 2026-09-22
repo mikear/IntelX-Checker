@@ -66,6 +66,12 @@ LANGUAGES = {
         "unique_sources": "Fuentes Únicas",
         "content_types": "Tipos de Contenido",
         "avg_score": "Puntuación Promedio",
+        "downloadable_docs": "Documentos Descargables",
+        "complete_metadata": "Metadatos Completos",
+        "possible_leaks": "Posibles Filtraciones",
+        "public_exposure": "Exposición Pública",
+        "indexed": "Indexados",
+        "sensitive": "Sensibles",
         # Table headers
         "Fecha": "Fecha",
         "Nombre": "Nombre",
@@ -83,6 +89,15 @@ LANGUAGES = {
         "No hay resultados para exportar": "No hay resultados para exportar",
         "No hay elementos seleccionados": "No hay elementos seleccionados",
         "Historial limpiado": "Historial limpiado",
+        # Vistas tabla/árbol
+        "Tabla": "Tabla",
+        "Árbol": "Árbol",
+        "Agrupar por:": "Agrupar por:",
+        "Expandir todo": "Expandir todo",
+        "Contraer todo": "Contraer todo",
+        "Sin fecha": "Sin fecha",
+        "Severidad": "Severidad",
+        "Tipo/Media": "Tipo/Media",
     },
     "en": {
         "title": "IntelX Checker V2",
@@ -147,6 +162,12 @@ LANGUAGES = {
         "unique_sources": "Unique Sources",
         "content_types": "Content Types",
         "avg_score": "Avg Score",
+        "downloadable_docs": "Downloadable Documents",
+        "complete_metadata": "Complete Metadata",
+        "possible_leaks": "Possible Leaks",
+        "public_exposure": "Public Exposure",
+        "indexed": "Indexed",
+        "sensitive": "Sensitive",
         # Table headers
         "Fecha": "Date",
         "Nombre": "Name",
@@ -164,6 +185,15 @@ LANGUAGES = {
         "No hay resultados para exportar": "No results to export",
         "No hay elementos seleccionados": "No items selected",
         "Historial limpiado": "History cleared",
+        # Table/tree views
+        "Tabla": "Table",
+        "Árbol": "Tree",
+        "Agrupar por:": "Group by:",
+        "Expandir todo": "Expand all",
+        "Contraer todo": "Collapse all",
+        "Sin fecha": "No date",
+        "Severidad": "Severity",
+        "Tipo/Media": "Type/Media",
     }
 }
 

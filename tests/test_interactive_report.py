@@ -42,6 +42,60 @@ class TestInteractiveReport(unittest.TestCase):
             self.assertIn("Database Leak 2023.txt", content)
             self.assertIn("<svg", content)
 
+    def test_report_contains_narrative_sections(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_file = os.path.join(tmpdir, "report.html")
+            generator = InteractiveReportGenerator()
+            result_path = generator.generate_report(self.sample_records, out_file, "test_search")
+            with open(result_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            for section in ("Resumen Ejecutivo", "Hallazgos Destacados", "Indicadores de Compromiso",
+                            "Metodología y Alcance", "Recomendaciones", "Glosario",
+                            "Distribución por Severidad", "Severidad"):
+                self.assertIn(section, content)
+            # i18n KPI bug fixed: no raw keys rendered
+            self.assertNotIn("downloadable_docs", content)
+            self.assertNotIn("possible_leaks", content)
+
+    def test_report_escapes_search_term(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_file = os.path.join(tmpdir, "report.html")
+            generator = InteractiveReportGenerator()
+            result_path = generator.generate_report(self.sample_records, out_file,
+                                                    '<script>alert("x")</script>')
+            with open(result_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertNotIn('<script>alert("x")</script>', content)
+            self.assertIn('&lt;script&gt;', content)
+
+    def test_report_html_improvements(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_file = os.path.join(tmpdir, "report.html")
+            generator = InteractiveReportGenerator()
+            result_path = generator.generate_report(self.sample_records, out_file,
+                                                    "test_search", search_id="sid-1")
+            with open(result_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            # Severity filter in table
+            self.assertIn('id="severityFilter"', content)
+            self.assertIn('record.severity !== severityFilter', content)
+            # IOC copy buttons + data
+            self.assertIn('class="btn-copy"', content)
+            self.assertIn('const iocData =', content)
+            self.assertIn('navigator.clipboard', content)
+            # TLP banner + doc control + nav
+            self.assertIn('TLP:CLEAR', content)
+            self.assertIn('Control del Documento', content)
+            self.assertIn('sid-1', content)
+            self.assertIn('class="toc-nav"', content)
+            for anchor in ("sec-resumen", "sec-visual", "sec-hallazgos", "sec-datos",
+                           "sec-iocs", "sec-metodo", "sec-recs", "sec-glosario"):
+                self.assertIn(f'id="{anchor}"', content)
+                self.assertIn(f'href="#{anchor}"', content)
+            # Print stylesheet (light theme)
+            self.assertIn('@media print', content)
+            self.assertIn('.btn-copy', content)
+
     def test_generate_interactive_html_report_helper(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             out_file = os.path.join(tmpdir, "interactive_report.html")

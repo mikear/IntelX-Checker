@@ -12,8 +12,9 @@ import webbrowser
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QFrame, QGroupBox, QLabel, QLineEdit, QPushButton,
-    QProgressBar, QTableWidget, QTableWidgetItem,
+    QFrame, QGroupBox, QLabel, QLineEdit, QPushButton, QComboBox,
+    QProgressBar, QTableWidget, QTableWidgetItem, QTabWidget,
+    QTreeWidget, QTreeWidgetItem,
     QHeaderView, QAbstractItemView, QSplitter, QTextEdit,
     QMenu, QMessageBox, QDialog, QStatusBar
 )
@@ -36,8 +37,9 @@ from i18n import LANGUAGES, t
 from api import check_intelx, get_api_credits, terminate_intelx_search, get_last_search_id, MEDIA_TYPE_MAP
 from utils import (
     open_in_browser, load_history, save_history, merge_records,
-    normalize_search_term, is_same_search_term,
+    normalize_search_term, is_same_search_term, group_records,
 )
+from report_narrative import severity_label
 import exports as exports_module
 
 logging.basicConfig(
@@ -275,6 +277,7 @@ class MainWindow(QMainWindow):
         # si es diferente se reemplaza la tabla.
         self.last_search_term = ''
         self._pending_search_term = ''
+        self.last_search_id = ''
 
         # Setup
         self._init_icons_safe()
@@ -287,6 +290,7 @@ class MainWindow(QMainWindow):
 
         if self.current_records:
             QTimer.singleShot(100, self._populate_results)
+            QTimer.singleShot(150, self._populate_tree)
 
     def _init_icons_safe(self):
         try:
@@ -347,6 +351,43 @@ class MainWindow(QMainWindow):
             QTableWidget::item {{
                 padding: 4px 6px;
                 color: {COLORS['text_heading']};
+            }}
+            QTreeWidget {{
+                background-color: {COLORS['surface']};
+                alternate-background-color: {COLORS['table_alt_row']};
+                selection-background-color: {COLORS['table_selection_bg']};
+                selection-color: {COLORS['table_selection_text']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                font-size: 11px;
+            }}
+            QTreeWidget::item {{
+                padding: 3px 6px;
+                color: {COLORS['text_heading']};
+            }}
+            QTreeWidget::item:selected {{
+                background-color: {COLORS['table_selection_bg']};
+                color: {COLORS['table_selection_text']};
+            }}
+            QTabWidget::pane {{
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                background-color: {COLORS['surface']};
+            }}
+            QTabBar::tab {{
+                background-color: {COLORS['progress_bg']};
+                color: {COLORS['text_muted']};
+                font-weight: bold;
+                font-size: 12px;
+                padding: 6px 18px;
+                border: 1px solid {COLORS['border']};
+                border-bottom: none;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['primary']};
             }}
             QHeaderView::section {{
                 background-color: {COLORS['table_header_bg']};
@@ -572,6 +613,15 @@ class MainWindow(QMainWindow):
         res_vbox.setContentsMargins(0, 0, 0, 0)
         res_vbox.setSpacing(4)
 
+        self.results_tabs = QTabWidget()
+        self.results_tabs.setObjectName("ResultsTabs")
+
+        # --- Tab 1: Table (existing grid) ---
+        tab_table = QWidget()
+        tab_table_layout = QVBoxLayout(tab_table)
+        tab_table_layout.setContentsMargins(0, 0, 0, 0)
+        tab_table_layout.setSpacing(4)
+
         self.table = QTableWidget(0, 9)
         self.table.setHorizontalHeaderLabels([
             "Fecha", "Nombre", "IP", "Tipo", "Media",
@@ -598,7 +648,60 @@ class MainWindow(QMainWindow):
         header.resizeSection(7, 80)
         header.resizeSection(8, 180)
 
-        res_vbox.addWidget(self.table)
+        tab_table_layout.addWidget(self.table)
+        self.results_tabs.addTab(tab_table, t("Tabla", self.current_language))
+
+        # --- Tab 2: Tree (groupable view) ---
+        tab_tree = QWidget()
+        tree_vbox = QVBoxLayout(tab_tree)
+        tree_vbox.setContentsMargins(0, 0, 0, 0)
+        tree_vbox.setSpacing(4)
+
+        tree_toolbar = QHBoxLayout()
+        tree_toolbar.setContentsMargins(2, 2, 2, 2)
+        self.group_label = QLabel(t("Agrupar por:", self.current_language))
+        tree_toolbar.addWidget(self.group_label)
+
+        self.group_combo = QComboBox()
+        self.group_combo.setMinimumWidth(160)
+        self._populate_group_combo()
+        self.group_combo.currentIndexChanged.connect(self._on_group_mode_changed)
+        tree_toolbar.addWidget(self.group_combo)
+
+        tree_toolbar.addStretch(1)
+
+        self.expand_all_btn = QPushButton(t("Expandir todo", self.current_language))
+        self.expand_all_btn.clicked.connect(self._expand_all_tree)
+        tree_toolbar.addWidget(self.expand_all_btn)
+
+        self.collapse_all_btn = QPushButton(t("Contraer todo", self.current_language))
+        self.collapse_all_btn.clicked.connect(self._collapse_all_tree)
+        tree_toolbar.addWidget(self.collapse_all_btn)
+
+        tree_vbox.addLayout(tree_toolbar)
+
+        self.tree = QTreeWidget()
+        self.tree.setColumnCount(9)
+        self.tree.setHeaderLabels([
+            "Fecha", "Nombre", "IP", "Tipo", "Media",
+            "Fuente", "Tamaño", "Puntuación", "ID Sistema"
+        ])
+        self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.header().setSectionResizeMode(QHeaderView.Interactive)
+        self.tree.header().setStretchLastSection(True)
+        self.tree.setSortingEnabled(False)
+        self.tree.setAnimated(True)
+        self.tree.setExpandsOnDoubleClick(True)
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self.show_tree_context_menu)
+        self.tree.itemDoubleClicked.connect(self.on_tree_double_click)
+        tree_vbox.addWidget(self.tree)
+
+        self.results_tabs.addTab(tab_tree, t("Árbol", self.current_language))
+
+        res_vbox.addWidget(self.results_tabs)
         self.splitter.addWidget(results_widget)
 
         # Log Console
@@ -800,6 +903,17 @@ class MainWindow(QMainWindow):
             t("Tamaño", lang), t("Puntuación", lang), t("ID Sistema", lang)
         ]
         self.table.setHorizontalHeaderLabels(headers)
+        try:
+            self.tree.setHeaderLabels(headers)
+            self.results_tabs.setTabText(0, t("Tabla", lang))
+            self.results_tabs.setTabText(1, t("Árbol", lang))
+            self.group_label.setText(t("Agrupar por:", lang))
+            self.expand_all_btn.setText(t("Expandir todo", lang))
+            self.collapse_all_btn.setText(t("Contraer todo", lang))
+            self._populate_group_combo()
+            self._populate_tree()
+        except Exception:
+            pass
 
     # --- API Config ---
     def _load_api_config(self):
@@ -941,6 +1055,7 @@ class MainWindow(QMainWindow):
                 # Dominio diferente (o primera búsqueda): mostrar solo la tabla nueva.
                 self.current_records = list(new_records)
             self.last_search_term = normalize_search_term(pending_term)
+            self.last_search_id = search_id or ''
             self._pending_search_term = ''
             save_history(self.current_records)
             self.progress_bar.setValue(100)
@@ -949,6 +1064,7 @@ class MainWindow(QMainWindow):
                 f"{t('Resultados', self.current_language)}: {len(new_records)} nuevos | {len(self.current_records)} total"
             )
             self._populate_results()
+            self._populate_tree()
             self._update_kpi_cards()
         else:
             error_msg = data if isinstance(data, str) else "Error"
@@ -991,6 +1107,47 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(False)
 
     # --- Populate Table ---
+    @staticmethod
+    def _normalize_record(record, i):
+        """Normaliza un registro (str/dict/otro) al formato dict de la grilla."""
+        if isinstance(record, str):
+            return {
+                'name': f'Resultado {i+1}', 'type': 1, 'media': 1,
+                'bucket': 'unknown', 'size': len(record), 'date': '',
+                'xscore': 0, 'systemid': f'record_{i}', 'data': record
+            }
+        if isinstance(record, dict):
+            return record
+        return {
+            'name': f'Resultado {i+1}', 'type': 0, 'media': 0,
+            'bucket': 'unknown', 'size': 0, 'date': '',
+            'xscore': 0, 'systemid': f'record_{i}', 'data': str(record)
+        }
+
+    def _record_display_values(self, record_dict, i):
+        """Devuelve las 9 celdas de texto de la grilla para un registro normalizado."""
+        date_str = record_dict.get('date', '')
+        date_text = date_str[:19] if date_str and len(date_str) > 19 else (date_str or 'N/A')
+
+        name = record_dict.get('name', f'Documento {i+1}')
+        name = name[:60] + "..." if len(name) > 60 else name
+
+        ip_address = self._extract_ip_address(record_dict)
+        type_val = record_dict.get('type', 0)
+        type_text = self._get_type_description(type_val)
+        media_val = record_dict.get('media', 0)
+        media_text = self._get_media_description(media_val)
+        bucket = record_dict.get('bucket', 'unknown')
+        bucket_text = record_dict.get('bucketh', bucket)
+        size = record_dict.get('size', 0)
+        size_text = self._format_file_size(size)
+        score = record_dict.get('xscore', 0)
+        score_text = str(score) if score > 0 else 'N/A'
+        system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
+
+        return [date_text, name, ip_address, type_text, media_text,
+                bucket_text, size_text, score_text, system_id]
+
     def _populate_results(self):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
@@ -999,45 +1156,11 @@ class MainWindow(QMainWindow):
             if self.stop_search:
                 break
 
-            if isinstance(record, str):
-                record_dict = {
-                    'name': f'Resultado {i+1}', 'type': 1, 'media': 1,
-                    'bucket': 'unknown', 'size': len(record), 'date': '',
-                    'xscore': 0, 'systemid': f'record_{i}', 'data': record
-                }
-            elif isinstance(record, dict):
-                record_dict = record
-            else:
-                record_dict = {
-                    'name': f'Resultado {i+1}', 'type': 0, 'media': 0,
-                    'bucket': 'unknown', 'size': 0, 'date': '',
-                    'xscore': 0, 'systemid': f'record_{i}', 'data': str(record)
-                }
-
-            date_str = record_dict.get('date', '')
-            date_text = date_str[:19] if date_str and len(date_str) > 19 else (date_str or 'N/A')
-
-            name = record_dict.get('name', f'Documento {i+1}')
-            name = name[:60] + "..." if len(name) > 60 else name
-
-            ip_address = self._extract_ip_address(record_dict)
-            type_val = record_dict.get('type', 0)
-            type_text = self._get_type_description(type_val)
-            media_val = record_dict.get('media', 0)
-            media_text = self._get_media_description(media_val)
-            bucket = record_dict.get('bucket', 'unknown')
-            bucket_text = record_dict.get('bucketh', bucket)
-            size = record_dict.get('size', 0)
-            size_text = self._format_file_size(size)
-            score = record_dict.get('xscore', 0)
-            score_text = str(score) if score > 0 else 'N/A'
-            system_id = record_dict.get('systemid', record_dict.get('storageid', str(i)))
+            record_dict = self._normalize_record(record, i)
+            items = self._record_display_values(record_dict, i)
 
             row = self.table.rowCount()
             self.table.insertRow(row)
-
-            items = [date_text, name, ip_address, type_text, media_text,
-                     bucket_text, size_text, score_text, system_id]
 
             for col, val in enumerate(items):
                 item = QTableWidgetItem(str(val))
@@ -1049,7 +1172,7 @@ class MainWindow(QMainWindow):
             # Color-code ISP column (col 5) based on content
             isp_item = self.table.item(row, 5)
             if isp_item:
-                isp_text = str(bucket_text).lower()
+                isp_text = str(items[5]).lower()
                 if 'error' in isp_text or 'red privada' in isp_text or 'private' in isp_text:
                     isp_item.setBackground(QColor(COLORS['private_bg']))
                     isp_item.setForeground(QColor(COLORS['private_text']))
@@ -1063,6 +1186,244 @@ class MainWindow(QMainWindow):
             self.table.clearSelection()
         except Exception:
             pass
+
+    # --- Tree View ---
+    def _populate_group_combo(self):
+        """Rellena el combo de agrupación preservando el modo actual."""
+        try:
+            current = self.group_combo.currentData()
+        except Exception:
+            current = "source"
+        lang = self.current_language
+        modes = [
+            ("source", t("Fuente", lang)),
+            ("severity", t("Severidad", lang)),
+            ("type", t("Tipo/Media", lang)),
+            ("date", t("Fecha", lang)),
+        ]
+        self.group_combo.blockSignals(True)
+        self.group_combo.clear()
+        for mode, label in modes:
+            self.group_combo.addItem(label, mode)
+        index = self.group_combo.findData(current if current else "source")
+        self.group_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.group_combo.blockSignals(False)
+
+    def _on_group_mode_changed(self):
+        self._populate_tree()
+
+    def _expand_all_tree(self):
+        try:
+            self.tree.expandAll()
+        except Exception:
+            pass
+
+    def _collapse_all_tree(self):
+        try:
+            self.tree.collapseAll()
+        except Exception:
+            pass
+
+    def _group_display_label(self, mode, key, count):
+        lang = self.current_language
+        if mode == "severity":
+            label = severity_label(key, lang)
+        elif mode == "type":
+            parts = str(key).split("||")
+            type_text = self._get_type_description(self._to_int(parts[0]) if len(parts) > 0 else 0)
+            media_text = self._get_media_description(self._to_int(parts[1]) if len(parts) > 1 else 0)
+            label = f"{type_text} · {media_text}"
+        elif mode == "date":
+            label = key if key else t("Sin fecha", lang)
+        else:
+            label = key
+        return f"{label} ({count})"
+
+    @staticmethod
+    def _to_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    def _populate_tree(self):
+        if not hasattr(self, "tree"):
+            return
+        self.tree.clear()
+        if not self.current_records:
+            return
+        try:
+            mode = self.group_combo.currentData() or "source"
+        except Exception:
+            mode = "source"
+
+        index_of = {id(record): i for i, record in enumerate(self.current_records)}
+        try:
+            groups = group_records(self.current_records, mode)
+        except Exception:
+            logger.exception("Error agrupando registros para el árbol")
+            return
+
+        for key, members in groups:
+            if self.stop_search:
+                break
+            parent = QTreeWidgetItem(self.tree, [self._group_display_label(mode, key, len(members))] + [""] * 8)
+            parent.setExpanded(True)
+            parent.setFlags(parent.flags() & ~Qt.ItemIsEditable)
+            try:
+                parent.setFont(0, QFont("Segoe UI", 10, QFont.Bold))
+            except Exception:
+                pass
+            for record in members:
+                i = index_of.get(id(record), 0)
+                record_dict = self._normalize_record(record, i)
+                values = [str(v) for v in self._record_display_values(record_dict, i)]
+                child = QTreeWidgetItem(parent, values)
+                child.setFlags(child.flags() & ~Qt.ItemIsEditable)
+                child.setData(8, Qt.UserRole, values[8])
+                try:
+                    child.setFont(2, QFont("Consolas", 10, QFont.Bold))
+                except Exception:
+                    pass
+        try:
+            for col in range(9):
+                self.tree.resizeColumnToContents(col)
+        except Exception:
+            pass
+
+    def _tree_selected_id(self):
+        """Devuelve el systemid del leaf seleccionado en el árbol, o None."""
+        ids = self._tree_selected_ids()
+        return ids[0] if ids else None
+
+    def _tree_selected_ids(self):
+        """Devuelve los systemid de las hojas seleccionadas (sin padres), sin duplicados."""
+        ids = []
+        try:
+            for item in self.tree.selectedItems():
+                if item is None or item.parent() is None:
+                    continue
+                system_id = item.data(8, Qt.UserRole)
+                if system_id and system_id not in ids:
+                    ids.append(system_id)
+        except Exception:
+            logger.exception("Error obteniendo selección del árbol")
+        return ids
+
+    def select_all_tree(self):
+        """Selecciona todas las hojas del árbol (los padres agrupan, no se exportan)."""
+        try:
+            self.tree.selectionModel().clearSelection()
+            root = self.tree.invisibleRootItem()
+            for p in range(root.childCount()):
+                parent = root.child(p)
+                for c in range(parent.childCount()):
+                    parent.child(c).setSelected(True)
+        except Exception:
+            logger.exception("Error seleccionando todo el árbol")
+
+    def deselect_all_tree(self):
+        try:
+            self.tree.clearSelection()
+        except Exception:
+            pass
+
+    def _preview_record_by_id(self, system_id):
+        if not system_id:
+            return
+        record = self._find_record_by_id(system_id)
+        if record:
+            from ui_components import PreviewWindow
+            key = str(system_id)
+            old = self.preview_windows.pop(key, None)
+            try:
+                if old is not None:
+                    old.close()
+            except Exception:
+                pass
+            win = PreviewWindow(self, record)
+            self.preview_windows[key] = win
+            try:
+                win.setAttribute(Qt.WA_DeleteOnClose, True)
+                win.finished.connect(lambda _r, k=key: self.preview_windows.pop(k, None))
+            except Exception:
+                pass
+            win.show()
+            try:
+                win.raise_()
+                win.activateWindow()
+            except Exception:
+                pass
+
+    def on_tree_double_click(self, item, column):
+        if item is None or item.parent() is None:
+            return
+        self._preview_record_by_id(item.data(8, Qt.UserRole))
+
+    def show_tree_context_menu(self, pos):
+        menu = QMenu(self)
+        action_preview = menu.addAction(t("Vista Previa", self.current_language))
+        menu.addSeparator()
+        action_select_all = menu.addAction(t("Seleccionar Todo", self.current_language))
+        action_deselect = menu.addAction(t("Deseleccionar", self.current_language))
+        menu.addSeparator()
+        action_copy = menu.addAction(t("Copiar", self.current_language))
+        action_export = menu.addAction(t("Exportar Selección", self.current_language))
+
+        action_preview.triggered.connect(
+            lambda: self._preview_record_by_id(self._tree_selected_id()))
+        action_select_all.triggered.connect(self.select_all_tree)
+        action_deselect.triggered.connect(self.deselect_all_tree)
+        action_copy.triggered.connect(self._copy_tree_selection)
+        action_export.triggered.connect(self._export_tree_selection)
+        menu.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def _copy_tree_selection(self):
+        ids = self._tree_selected_ids()
+        if not ids:
+            QMessageBox.warning(self, "Error",
+                                t("No hay elementos seleccionados", self.current_language))
+            return
+        headers = [self.tree.headerItem().text(c) for c in range(self.tree.columnCount())]
+        lines = ['\t'.join(headers)]
+        for system_id in ids:
+            record = self._find_record_by_id(system_id)
+            if not record:
+                continue
+            values = [str(v) for v in self._record_display_values(
+                self._normalize_record(record, 0), 0)]
+            lines.append('\t'.join(values))
+        QApplication.clipboard().setText('\n'.join(lines))
+
+    def _export_tree_selection(self):
+        ids = self._tree_selected_ids()
+        if not ids:
+            QMessageBox.warning(self, "Error",
+                                t("No hay elementos seleccionados", self.current_language))
+            return
+        selected_records = []
+        for system_id in ids:
+            record = self._find_record_by_id(system_id)
+            if record:
+                selected_records.append(record)
+        if selected_records:
+            from ui_components import show_export_selection_dialog
+            show_export_selection_dialog(self, selected_records)
+
+    def _copy_tree_record(self, system_id):
+        record = self._find_record_by_id(system_id)
+        if not record:
+            return
+        headers = [self.tree.headerItem().text(c) for c in range(self.tree.columnCount())]
+        values = [str(v) for v in self._record_display_values(
+            self._normalize_record(record, 0), 0)]
+        QApplication.clipboard().setText('\t'.join(headers) + '\n' + '\t'.join(values))
+
+    def _export_tree_record(self, system_id):
+        record = self._find_record_by_id(system_id)
+        if record:
+            from ui_components import show_export_selection_dialog
+            show_export_selection_dialog(self, [record])
 
     def _extract_ip_address(self, record_dict):
         ipv4_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
@@ -1135,6 +1496,35 @@ class MainWindow(QMainWindow):
                         show = True
                         break
             self.table.setRowHidden(row, not show)
+        self.filter_tree(filter_text)
+
+    def filter_tree(self, filter_text=""):
+        """Poda el árbol: oculta hojas que no coincidan y padres vacíos."""
+        if not hasattr(self, "tree"):
+            return
+        try:
+            root = self.tree.invisibleRootItem()
+            for p in range(root.childCount()):
+                parent = root.child(p)
+                if not filter_text:
+                    parent.setHidden(False)
+                    for c in range(parent.childCount()):
+                        parent.child(c).setHidden(False)
+                    continue
+                visible = 0
+                for c in range(parent.childCount()):
+                    child = parent.child(c)
+                    match = any(
+                        filter_text in (child.text(col) or "").lower()
+                        for col in range(child.columnCount())
+                    )
+                    child.setHidden(not match)
+                    if match:
+                        visible += 1
+                parent.setHidden(visible == 0)
+                parent.setExpanded(visible > 0)
+        except Exception:
+            logger.exception("Error filtrando árbol")
 
     # --- Sort ---
     # Sorting is handled natively by QTableWidget with setSortingEnabled(True)
@@ -1169,30 +1559,7 @@ class MainWindow(QMainWindow):
         item = self.table.item(row, 8)
         if item is None:
             return
-        system_id = item.text()
-        record = self._find_record_by_id(system_id)
-        if record:
-            from ui_components import PreviewWindow
-            key = str(system_id)
-            old = self.preview_windows.pop(key, None)
-            try:
-                if old is not None:
-                    old.close()
-            except Exception:
-                pass
-            win = PreviewWindow(self, record)
-            self.preview_windows[key] = win
-            try:
-                win.setAttribute(Qt.WA_DeleteOnClose, True)
-                win.finished.connect(lambda _r, k=key: self.preview_windows.pop(k, None))
-            except Exception:
-                pass
-            win.show()
-            try:
-                win.raise_()
-                win.activateWindow()
-            except Exception:
-                pass
+        self._preview_record_by_id(item.text())
 
     def _find_record_by_id(self, record_id):
         for i, record in enumerate(self.current_records):
@@ -1258,6 +1625,10 @@ class MainWindow(QMainWindow):
             self.current_records = []
             save_history([])
             self.table.setRowCount(0)
+            try:
+                self.tree.clear()
+            except Exception:
+                pass
             self._update_kpi_cards()
             self.status_label.setText(t("Historial limpiado", self.current_language))
 
@@ -1306,7 +1677,9 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Sin Datos", t("No hay resultados para exportar", self.current_language))
                 return
             search_term = self.term_entry.text().strip() or 'IntelX Export'
-            filepath = exports_module.generate_pdf_report(self.current_records, title=search_term)
+            filepath = exports_module.generate_pdf_report(
+                self.current_records, title=search_term, search_term=search_term,
+                search_id=self.last_search_id or None, lang=self.current_language)
             if filepath:
                 reply = QMessageBox.question(
                     self, "Exportación Exitosa",
@@ -1329,7 +1702,9 @@ class MainWindow(QMainWindow):
             filepath = export_to_interactive_html(
                 records=self.current_records,
                 search_term=search_term,
-                app_version="2.0.0"
+                app_version="2.0.0",
+                lang=self.current_language,
+                search_id=self.last_search_id or None
             )
             if filepath:
                 reply = QMessageBox.question(

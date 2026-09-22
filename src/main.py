@@ -44,9 +44,12 @@ def run_cli_mode(args) -> int:
         if export_format == "csv":
             out_file = export_to_csv(records, exports_dir=out_dir)
         elif export_format == "html":
-            out_file = export_to_interactive_html(records, exports_dir=out_dir, search_term=search_term)
+            out_file = export_to_interactive_html(records, exports_dir=out_dir, search_term=search_term,
+                                                  search_id=search_id)
         elif export_format == "pdf":
-            out_file = generate_pdf_report(records, title=f"IntelX Export - {search_term}", exports_dir=out_dir)
+            out_file = generate_pdf_report(records, title=f"IntelX Export - {search_term}",
+                                           exports_dir=out_dir, search_term=search_term,
+                                           search_id=search_id)
         else:
             out_file = export_to_json(records, exports_dir=out_dir)
 

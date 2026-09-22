@@ -286,6 +286,20 @@ class SVGVisualizationGenerator:
             values=chart_data.get('sources', {}).get('values', []),
             title="Fuentes Principales"
         )
+
+        # Gráfico de severidad (donut)
+        severity_svg = self.chart_generator.create_donut_chart(
+            labels=chart_data.get('severity', {}).get('labels', []),
+            values=chart_data.get('severity', {}).get('values', []),
+            title=chart_data.get('severity_title', 'Distribución por Severidad')
+        )
+
+        # Gráfico de medios (barras)
+        media_svg = self.chart_generator.create_bar_chart(
+            labels=chart_data.get('media', {}).get('labels', []),
+            values=chart_data.get('media', {}).get('values', []),
+            title=chart_data.get('media_title', 'Tipos de Medio (Top)')
+        )
         
         # Gráfico temporal (líneas) - tamaño extra grande
         self.chart_generator.width = 1000  # Aumentar más el ancho para temporal
@@ -307,6 +321,14 @@ class SVGVisualizationGenerator:
                 </div>
                 <div class="chart-card">
                     {sources_svg}
+                </div>
+            </div>
+            <div class="chart-grid-three">
+                <div class="chart-card">
+                    {severity_svg}
+                </div>
+                <div class="chart-card">
+                    {media_svg}
                 </div>
             </div>
             <div class="chart-card chart-wide">

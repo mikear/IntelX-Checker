@@ -117,20 +117,30 @@ def export_to_json(records: List[Dict[str, Any]], filename: Optional[str] = None
 
 def generate_pdf_report(records: List[Dict[str, Any]], title: str = 'IntelX Export',
                         filename: Optional[str] = None,
-                        exports_dir: Optional[str] = None) -> str:
-    """Generate a printable PDF report from Intelligence X search results.
+                        exports_dir: Optional[str] = None,
+                        search_term: str = "",
+                        search_id: Optional[str] = None,
+                        lang: str = "es") -> str:
+    """Generate a professional PDF report from Intelligence X search results.
 
-    The report keeps the fields shown in the results grid and wraps long values
-    so every column remains inside an A4 portrait page.
+    Includes cover data, executive summary, severity breakdown, key findings,
+    IOCs, methodology and recommendations (shared narrative layer), plus the
+    full results grid. Paginated with page numbers.
+
+    Args:
+        records: List of record dictionaries.
+        title: Report title.
+        filename: Optional filename.
+        exports_dir: Optional directory path. Defaults to exports/pdf/.
+        search_term: The search term used (shown in methodology).
+        search_id: IntelX search ID (shown in methodology).
+        lang: Report language ('es' or 'en').
+
+    Returns:
+        The full path to the generated PDF file.
     """
     try:
-        from reportlab.lib import colors
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import mm
-        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                        Table, TableStyle)
+        from pdf_report import generate_professional_pdf
     except ImportError as exc:
         raise RuntimeError(
             'La exportación a PDF requiere la dependencia "reportlab". '
@@ -149,61 +159,15 @@ def generate_pdf_report(records: List[Dict[str, Any]], title: str = 'IntelX Expo
         filename += '.pdf'
     filepath = os.path.join(exports_dir, filename)
 
-    styles = getSampleStyleSheet()
-    heading = ParagraphStyle('PDFHeading', parent=styles['Heading1'], alignment=TA_CENTER,
-                             fontName='Helvetica-Bold', fontSize=16, leading=20,
-                             textColor=colors.HexColor('#1f4e79'), spaceAfter=4)
-    subtitle = ParagraphStyle('PDFSubtitle', parent=styles['Normal'], alignment=TA_CENTER,
-                              fontSize=9, leading=12, textColor=colors.HexColor('#555555'))
-    cell = ParagraphStyle('PDFCell', parent=styles['Normal'], alignment=TA_LEFT,
-                          fontSize=7, leading=9)
-    header = ParagraphStyle('PDFHeader', parent=cell, alignment=TA_CENTER,
-                            fontName='Helvetica-Bold', textColor=colors.white)
-
-    fields = [
-        ('date', 'Fecha', 20 * mm),
-        ('name', 'Nombre', 48 * mm),
-        ('bucket', 'Fuente', 28 * mm),
-        ('type', 'Tipo', 18 * mm),
-        ('size', 'Tamaño', 16 * mm),
-        ('storageid', 'ID', 48 * mm),
-    ]
-    data = [[Paragraph(label, header) for _, label, _ in fields]]
-    for record in records:
-        data.append([
-            Paragraph(_pdf_text(record.get(key)), cell)
-            for key, _, _ in fields
-        ])
-
-    document = SimpleDocTemplate(
-        filepath, pagesize=A4, leftMargin=12 * mm, rightMargin=12 * mm,
-        topMargin=13 * mm, bottomMargin=13 * mm, title=_pdf_text(title),
-        author='IntelX Checker',
-    )
-    table = Table(data, colWidths=[width for _, _, width in fields], repeatRows=1)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f4e79')),
-        ('GRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#c8d2dc')),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f4f7fa')]),
-    ]))
-    story = [
-        Paragraph(_pdf_text(title), heading),
-        Paragraph(f'Resultados exportados: {len(records)} | Generado: {datetime.now().strftime("%d/%m/%Y %H:%M")}', subtitle),
-        Spacer(1, 7 * mm), table,
-    ]
     try:
-        document.build(story)
+        result = generate_professional_pdf(
+            records, filepath, title=title, search_term=search_term,
+            search_id=search_id, lang=lang)
     except Exception:
         logger.exception('Error writing PDF export')
         raise
-
-    logger.info('PDF export written: %s', filepath)
-    return filepath
+    logger.info('PDF export written: %s', result)
+    return result
 
 
 def select_records_for_export(records: List[Dict[str, Any]], selected_ids: Optional[List[str]] = None, id_field: str = 'storageid') -> List[Dict[str, Any]]:
@@ -219,11 +183,13 @@ def select_records_for_export(records: List[Dict[str, Any]], selected_ids: Optio
     return filtered
 
 
-def export_to_interactive_html(records: List[Dict[str, Any]], 
-                              filename: Optional[str] = None, 
-                              exports_dir: Optional[str] = None,
-                              search_term: str = "",
-                              app_version: str = "2.0.0") -> str:
+def export_to_interactive_html(records: List[Dict[str, Any]],
+                               filename: Optional[str] = None,
+                               exports_dir: Optional[str] = None,
+                               search_term: str = "",
+                               app_version: str = "2.0.0",
+                               lang: str = "es",
+                               search_id: Optional[str] = None) -> str:
     """Export records to an interactive HTML report. Returns the file path.
 
     This generates a modern, interactive HTML report with:
@@ -257,7 +223,8 @@ def export_to_interactive_html(records: List[Dict[str, Any]],
 
     try:
         # Generate the interactive report
-        result_path = generate_interactive_html_report(records, filepath, search_term, app_version)
+        result_path = generate_interactive_html_report(records, filepath, search_term, app_version,
+                                                       lang=lang, search_id=search_id)
         logger.info('Interactive HTML report written: %s', result_path)
         return result_path
 

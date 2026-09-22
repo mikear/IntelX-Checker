@@ -8,13 +8,16 @@
 
 - **Busqueda en Intelligence X** por correo electronico o dominio
 - **Acumulacion de resultados** sin duplicados (por `systemid`/`storageid`)
+- **Vista de tabla y vista de árbol** con agrupación (Fuente, Severidad, Tipo/Media, Fecha), multi-selección y expandir/contraer
 - **Persistencia automatica** en `data/history.json`
-- **4 KPI cards**: Total, Fuentes, Tipos de Contenido, Puntuacion Promedio
+- **4 KPI cards**: Total, Fuentes, Tipos de Contenido, Puntuación Promedio
 - **Tabla interactiva** con 9 columnas, ordenamiento y filtro por texto
+- **Reportes profesionales HTML/PDF**: resumen ejecutivo, severidad (Crítica/Alta/Media/Baja), hallazgos explicados, IOCs con copiado, metodología, recomendaciones y glosario
+- **PDF estilo pentest**: portada con control documental, índice automático, gráficos de riesgo y paginación
 - **Log de ejecucion** dark terminal (toggle desde Ver > Log)
 - **Exportacion**: CSV, JSON, PDF, HTML interactivo con graficos SVG
 - **API key segura** via keyring del sistema
-- **Bilingue**: Espanol / English
+- **Bilingue**: Espanol / English (app y reportes)
 
 ## Screenshots
 
@@ -85,7 +88,9 @@ src/
 ├── api.py                  # Logica API IntelX
 ├── config.py               # .env + keyring
 ├── exports.py              # CSV/JSON/PDF/HTML
-├── utils.py                # Historial, dedup, helpers
+├── pdf_report.py           # PDF profesional (portada, índice, gráficos)
+├── report_narrative.py     # Narrativa compartida: severidad, resumen, IOCs
+├── utils.py                # Historial, dedup, agrupación, helpers
 ├── i18n.py                 # Multilenguaje (es/en)
 ├── analysis.py             # IOC extraction
 ├── interactive_report.py   # Generador HTML interactivo

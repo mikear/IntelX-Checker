@@ -78,6 +78,63 @@ def merge_records(existing: list, new: list) -> list:
     return merged
 
 
+# Modos de agrupación para la vista de árbol.
+GROUP_MODES = ("source", "severity", "type", "date")
+
+
+def _group_key(record, mode: str) -> str:
+    """Calcula la clave de agrupación de un registro para un modo dado.
+
+    - source: bucketh o bucket (display usado en la tabla).
+    - severity: clave de severidad (critical/high/medium/low/unknown).
+    - type: "type||media" con valores crudos (la GUI los etiqueta).
+    - date: "YYYY-MM" o "" si no hay fecha (la GUI muestra "Sin fecha").
+    """
+    from report_narrative import compute_severity
+    is_dict = isinstance(record, dict)
+    if mode == "severity":
+        return compute_severity(record)
+    if mode == "type":
+        type_val = record.get("type", "N/A") if is_dict else "N/A"
+        media_val = record.get("media", "N/A") if is_dict else "N/A"
+        return f"{type_val}||{media_val}"
+    if mode == "date":
+        date_str = record.get("date", "") if is_dict else ""
+        if isinstance(date_str, str) and len(date_str) >= 7:
+            return date_str[:7]
+        return ""
+    # source (default)
+    if is_dict:
+        return str(record.get("bucketh") or record.get("bucket") or "unknown")
+    return "unknown"
+
+
+def group_records(records: list, mode: str = "source") -> list:
+    """Agrupa registros para la vista de árbol.
+
+    Args:
+        records: Lista de registros (dicts o str).
+        mode: Uno de GROUP_MODES; modo desconocido -> "source".
+
+    Returns:
+        Lista de tuplas (clave, [registros]) ordenada por cantidad
+        descendente y luego por clave para determinismo.
+    """
+    if mode not in GROUP_MODES:
+        mode = "source"
+    buckets: dict = {}
+    order: list = []
+    for record in records or []:
+        key = _group_key(record, mode)
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(record)
+    grouped = [(key, buckets[key]) for key in order]
+    grouped.sort(key=lambda item: (-len(item[1]), str(item[0])))
+    return grouped
+
+
 def normalize_search_term(term) -> str:
     """Normaliza un término de búsqueda para comparar dominios.
 

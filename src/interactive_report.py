@@ -12,6 +12,7 @@ from collections import Counter, OrderedDict
 
 from api import MEDIA_TYPE_MAP
 from svg_charts import SVGVisualizationGenerator
+import report_narrative as narrative
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class DataProcessor:
             },
             "temporal_data": Counter(),
             "data_types": Counter(),
+            "severity_counts": Counter(),
             "unique_sources": set()
         }
 
@@ -59,6 +61,9 @@ class DataProcessor:
             # Data type classification
             data_type = DataProcessor._classify_data_type(r)
             analysis["data_types"][data_type] += 1
+
+            # Severity classification (shared narrative layer)
+            analysis["severity_counts"][narrative.compute_severity(r)] += 1
 
             # Exposure levels
             tags_lower = str(r.get("tags", "")).lower()
@@ -181,13 +186,20 @@ class DataProcessor:
         
         # Source distribution
         source_labels, source_values = top_n_with_others(analysis["source_distribution"])
-        
+
+        # Severity distribution (fixed order critical -> unknown)
+        severity_labels = [narrative.severity_label(k) for k in narrative.SEVERITY_ORDER]
+        raw_sev = analysis.get("severity_counts", {})
+        severity_values = [raw_sev.get(k, 0) for k in narrative.SEVERITY_ORDER]
+
         # Temporal evolution (last 5 years)
         temporal_data = DataProcessor._prepare_temporal_data(analysis["temporal_data"])
-        
+
         return {
             "dataTypes": {"labels": data_type_labels, "values": data_type_values},
             "sources": {"labels": source_labels, "values": source_values},
+            "media": {"labels": media_labels, "values": media_values},
+            "severity": {"labels": severity_labels, "values": severity_values},
             "temporal": temporal_data,
             "kpis": analysis["kpis"],
             "exposure": analysis["exposure_levels"]
@@ -279,7 +291,10 @@ class TableGenerator:
         # Get unique values for filters
         unique_types = sorted(set(r.get('data_type', 'N/A') for r in processed_records))
         unique_sources = sorted(set(r.get('bucket', 'N/A') for r in processed_records))
-        
+        sev_options = [(k, narrative.severity_label(k))
+                       for k in narrative.SEVERITY_ORDER
+                       if any(r.get('severity') == k for r in processed_records)]
+
         filters_html = f"""
         <div class="filters-container">
             <div class="filters-row">
@@ -295,6 +310,13 @@ class TableGenerator:
                     <select id="sourceFilter">
                         <option value="">Todas las fuentes</option>
                         {chr(10).join(f'<option value="{s}">{s}</option>' for s in unique_sources)}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="severityFilter">Severidad:</label>
+                    <select id="severityFilter">
+                        <option value="">Todas</option>
+                        {chr(10).join(f'<option value="{k}">{lbl}</option>' for k, lbl in sev_options)}
                     </select>
                 </div>
                 <div class="filter-group">
@@ -341,6 +363,9 @@ class TableGenerator:
                         <th class="sortable" data-column="media_label">
                             Media <span class="sort-icon">↕</span>
                         </th>
+                        <th class="sortable" data-column="severity">
+                            Severidad <span class="sort-icon">↕</span>
+                        </th>
                         <th class="sortable" data-column="xscore">
                             Puntuación <span class="sort-icon">↕</span>
                         </th>
@@ -378,6 +403,7 @@ class TableGenerator:
                     <td><span class="badge badge-${{record.data_type.toLowerCase().replace(/\\s+/g, '-')}}">${{record.data_type}}</span></td>
                     <td class="source-cell" title="${{record.bucket || 'N/A'}}">${{truncateText(record.bucket || 'N/A', 30)}}</td>
                     <td>${{record.media_label || 'N/A'}}</td>
+                    <td><span class="sev sev-${{record.severity || 'unknown'}}">${{record.severity_label || record.severity || 'N/A'}}</span></td>
                     <td class="score-cell">
                         <span class="score score-${{getScoreClass(record.xscore)}}">${{record.xscore || '–'}}</span>
                     </td>
@@ -434,6 +460,7 @@ class TableGenerator:
         function applyFilters() {{
             const typeFilter = document.getElementById('typeFilter').value;
             const sourceFilter = document.getElementById('sourceFilter').value;
+            const severityFilter = document.getElementById('severityFilter').value;
             const dateFromFilter = document.getElementById('dateFromFilter').value;
             const dateToFilter = document.getElementById('dateToFilter').value;
             const searchInput = document.getElementById('searchInput').value.toLowerCase();
@@ -444,6 +471,9 @@ class TableGenerator:
                 
                 // Source filter
                 if (sourceFilter && record.bucket !== sourceFilter) return false;
+
+                // Severity filter
+                if (severityFilter && record.severity !== severityFilter) return false;
                 
                 // Date range filter
                 if (dateFromFilter || dateToFilter) {{
@@ -458,7 +488,9 @@ class TableGenerator:
                         record.name || '',
                         record.data_type || '',
                         record.bucket || '',
-                        record.media_label || ''
+                        record.media_label || '',
+                        record.severity_label || '',
+                        record.severity || ''
                     ].join(' ').toLowerCase();
                     
                     if (!searchFields.includes(searchInput)) return false;
@@ -478,7 +510,7 @@ class TableGenerator:
             renderTable(filteredData);
             
             // Add event listeners for filters
-            ['typeFilter', 'sourceFilter', 'dateFromFilter', 'dateToFilter', 'searchInput'].forEach(id => {{
+            ['typeFilter', 'sourceFilter', 'severityFilter', 'dateFromFilter', 'dateToFilter', 'searchInput'].forEach(id => {{
                 document.getElementById(id).addEventListener('change', applyFilters);
                 document.getElementById(id).addEventListener('input', applyFilters);
             }});
@@ -487,6 +519,7 @@ class TableGenerator:
             document.getElementById('clearFilters').addEventListener('click', () => {{
                 document.getElementById('typeFilter').value = '';
                 document.getElementById('sourceFilter').value = '';
+                document.getElementById('severityFilter').value = '';
                 document.getElementById('dateFromFilter').value = '';
                 document.getElementById('dateToFilter').value = '';
                 document.getElementById('searchInput').value = '';
@@ -520,8 +553,9 @@ class TableGenerator:
     def _process_records_for_table(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Process records for table display."""
         processed = []
-        
+
         for record in records:
+            severity = narrative.compute_severity(record)
             processed_record = {
                 'date': record.get('date', ''),
                 'name': record.get('name', 'N/A'),
@@ -529,12 +563,14 @@ class TableGenerator:
                 'type': record.get('type', 'N/A'),
                 'media': record.get('media', ''),
                 'media_label': DataProcessor._media_label(record.get('media')),
-                'xscore': record.get('xscore', ''),
+                'xscore': record.get('xscore', '') or record.get('score', ''),
+                'severity': severity,
+                'severity_label': narrative.severity_label(severity),
                 'systemid': record.get('systemid', ''),
                 'data_type': DataProcessor._classify_data_type(record)
             }
             processed.append(processed_record)
-        
+
         return processed
 
 
@@ -676,11 +712,16 @@ class StyleGenerator:
         .section-title {
             font-size: 1.5rem;
             font-weight: 700;
-            color: #f3f4f6;
+            color: #ffffff;
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            border-left: 5px solid #6366f1;
+            background: rgba(99, 102, 241, 0.12);
+            padding: 0.6rem 1rem;
+            border-radius: 0 10px 10px 0;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
         }
 
         .charts-container {
@@ -1060,7 +1101,30 @@ class StyleGenerator:
 
 class InteractiveReportGenerator:
     """Main class for generating interactive HTML reports."""
-    
+
+    SECTION_TITLES = {
+        "es": {
+            "summary": "📋 Resumen Ejecutivo",
+            "visual": "📈 Análisis Visual",
+            "findings": "🎯 Hallazgos Destacados",
+            "data": "🔍 Datos Detallados",
+            "iocs": "🧬 Indicadores de Compromiso (IOCs)",
+            "methodology": "🔬 Metodología y Alcance",
+            "recommendations": "✅ Recomendaciones",
+            "glossary": "📖 Glosario",
+        },
+        "en": {
+            "summary": "📋 Executive Summary",
+            "visual": "📈 Visual Analysis",
+            "findings": "🎯 Key Findings",
+            "data": "🔍 Detailed Data",
+            "iocs": "🧬 Indicators of Compromise (IOCs)",
+            "methodology": "🔬 Methodology & Scope",
+            "recommendations": "✅ Recommendations",
+            "glossary": "📖 Glossary",
+        },
+    }
+
     def __init__(self, app_version: str = "2.0.0"):
         self.app_version = app_version
         self.data_processor = DataProcessor()
@@ -1068,19 +1132,304 @@ class InteractiveReportGenerator:
         self.table_generator = TableGenerator()
         self.style_generator = StyleGenerator()
 
-    def generate_report(self, 
-                       records: List[Dict[str, Any]], 
-                       output_filepath: str, 
+    def _titles(self, lang: str) -> Dict[str, str]:
+        return self.SECTION_TITLES.get(lang, self.SECTION_TITLES["es"])
+
+    @staticmethod
+    def _narrative_css() -> str:
+        """Extra CSS for narrative sections and severity badges."""
+        return """
+        /* Narrative sections */
+        .narrative-section { margin: 24px 0; }
+        .summary-box {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 18px 20px;
+        }
+        .summary-box p { margin: 0 0 10px 0; line-height: 1.6; }
+        .summary-box p:last-child { margin-bottom: 0; }
+        .finding-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-left: 4px solid #6366f1;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+        }
+        .finding-card.sev-critical { border-left-color: #ef4444; }
+        .finding-card.sev-high { border-left-color: #f59e0b; }
+        .finding-card.sev-medium { border-left-color: #3b82f6; }
+        .finding-card.sev-low { border-left-color: #22c55e; }
+        .finding-card.sev-unknown { border-left-color: #6b7280; }
+        .finding-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+        .finding-name { font-weight: bold; font-size: 15px; }
+        .finding-meta { font-size: 12px; opacity: 0.8; }
+        .finding-reason { font-size: 13px; line-height: 1.5; }
+        .sev {
+            display: inline-block; padding: 2px 10px; border-radius: 999px;
+            font-size: 11px; font-weight: bold; white-space: nowrap;
+        }
+        .sev-critical { background: #fee2e2; color: #991b1b; }
+        .sev-high { background: #fef3c7; color: #92400e; }
+        .sev-medium { background: #dbeafe; color: #1e40af; }
+        .sev-low { background: #dcfce7; color: #166534; }
+        .sev-unknown { background: #e5e7eb; color: #374151; }
+        .ioc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+        .ioc-box {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px; padding: 12px 14px;
+        }
+        .ioc-box h3 { font-size: 14px; margin-bottom: 8px; }
+        .ioc-box ul { list-style: none; max-height: 180px; overflow-y: auto; }
+        .ioc-box li { font-family: Consolas, monospace; font-size: 12px; padding: 2px 0; word-break: break-all; }
+        .method-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .method-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); vertical-align: top; }
+        .method-table td:first-child { font-weight: bold; white-space: nowrap; width: 180px; }
+        .rec-list { padding-left: 20px; }
+        .rec-list li { margin-bottom: 8px; line-height: 1.55; }
+        .glossary-list dt { font-weight: bold; margin-top: 10px; }
+        .glossary-list dd { margin: 2px 0 0 0; opacity: 0.9; line-height: 1.5; }
+        @media print {
+            .finding-card, .ioc-box, .summary-box { break-inside: avoid; }
+        }
+        """
+
+    @staticmethod
+    def _extra_css() -> str:
+        """Screen styles for cover banner, doc control, nav and copy buttons."""
+        return """
+        /* Cover / control / nav */
+        .tlp-banner {
+            background: #ef4444; color: #fff; text-align: center;
+            font-weight: bold; font-size: 13px; letter-spacing: 2px;
+            padding: 6px 0;
+        }
+        .doc-control { margin: 24px 0; }
+        .doc-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 8px 16px; background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px; padding: 16px 20px; font-size: 13px;
+        }
+        .doc-grid span { font-weight: bold; }
+        .toc-nav {
+            margin-top: 12px; font-size: 13px; line-height: 2;
+            background: rgba(255,255,255,0.04);
+            border-radius: 10px; padding: 10px 16px;
+        }
+        .toc-nav a { color: #93c5fd; text-decoration: none; }
+        .toc-nav a:hover { text-decoration: underline; }
+        .btn-copy {
+            font-size: 11px; padding: 2px 10px; margin-left: 8px;
+            border-radius: 999px; border: 1px solid rgba(255,255,255,0.25);
+            background: rgba(255,255,255,0.1); color: inherit; cursor: pointer;
+        }
+        .btn-copy:hover { background: rgba(255,255,255,0.2); }
+        .ioc-box h3 { display: flex; align-items: center; justify-content: space-between; }
+        """
+
+    @staticmethod
+    def _print_css() -> str:
+        """Light professional theme for printing / saving as PDF."""
+        return """
+        @media print {
+            @page { size: A4 portrait; margin: 12mm; }
+            body { background: #fff !important; color: #111827 !important; }
+            .container { max-width: none; padding: 0; }
+            .filters-container, .header-actions, .btn-copy, .search-row { display: none !important; }
+            .finding-meta a, td a.btn-link { display: none !important; }
+            .header { background: #1e3a8a !important; -webkit-print-color-adjust: exact; color-adjust: exact; }
+            .header-meta { color: #e0e7ff !important; }
+            .section-title { color: #1e3a8a !important; }
+            .kpi-card, .chart-card, .summary-box, .finding-card, .ioc-box, .doc-grid, .toc-nav {
+                background: #fff !important; color: #111827 !important;
+                border: 1px solid #cbd5e1 !important; box-shadow: none !important;
+            }
+            .finding-meta, .glossary-list dd, .ioc-box li { color: #334155 !important; opacity: 1 !important; }
+            .toc-nav a { color: #1e40af !important; }
+            .method-table td { border-bottom: 1px solid #cbd5e1 !important; }
+            .rec-list li, .summary-box p { color: #111827 !important; }
+            #resultsTable { font-size: 0.68rem; }
+            #resultsTable th { background: #1e3a8a !important; color: #fff !important; -webkit-print-color-adjust: exact; color-adjust: exact; }
+            #resultsTable td { border: 1px solid #cbd5e1 !important; color: #111827 !important; }
+            #resultsTable thead { display: table-header-group; }
+            .badge, .sev, .score { -webkit-print-color-adjust: exact; color-adjust: exact; }
+            .tlp-banner { -webkit-print-color-adjust: exact; color-adjust: exact; }
+            .kpi-section, .charts-section, .table-section, .narrative-section, .doc-control { break-inside: auto; }
+            .finding-card, .ioc-box, h2.section-title { break-inside: avoid; }
+            .footer { color: #475569 !important; }
+        }
+        """
+
+    def _build_summary_section(self, narration: Dict[str, Any], lang: str) -> str:
+        items = "\n".join(
+            f"<p>{narrative.escape_html(p)}</p>" for p in narration.get("summary", [])
+        )
+        return f"""
+        <section class="narrative-section" id="sec-resumen">
+            <h2 class="section-title">{self._titles(lang)['summary']}</h2>
+            <div class="summary-box">
+                {items}
+            </div>
+        </section>
+        """
+
+    def _build_findings_section(self, narration: Dict[str, Any], lang: str) -> str:
+        findings = narration.get("findings", [])
+        if not findings:
+            return ""
+        cards = []
+        for rank, finding in enumerate(findings, start=1):
+            sev = finding.get("severity", "unknown")
+            link = ""
+            if finding.get("systemid"):
+                link = (f' <a href="https://intelx.io/?s={narrative.escape_html(finding["systemid"])}" '
+                        f'target="_blank" class="btn-link">Ver</a>')
+            cards.append(f"""
+                <div class="finding-card sev-{narrative.escape_html(sev)}">
+                    <div class="finding-head">
+                        <span class="finding-name">#{rank} {narrative.escape_html(finding.get('name', 'N/A'))}</span>
+                        <span class="sev sev-{narrative.escape_html(sev)}">{narrative.escape_html(finding.get('severity_label', sev))}</span>
+                        <span class="finding-meta">Score {finding.get('score', 0)} • {narrative.escape_html(finding.get('bucket', 'N/A'))} • {narrative.escape_html(finding.get('date', 'N/A'))}{link}</span>
+                    </div>
+                    <div class="finding-reason">{narrative.escape_html(finding.get('reason', ''))}</div>
+                </div>
+            """)
+        return f"""
+        <section class="narrative-section" id="sec-hallazgos">
+            <h2 class="section-title">{self._titles(lang)['findings']}</h2>
+            {''.join(cards)}
+        </section>
+        """
+
+    def _build_ioc_section(self, narration: Dict[str, Any], lang: str) -> str:
+        iocs = narration.get("iocs", {})
+        order = ("emails", "ips", "domains", "urls")
+        labels = {"emails": "✉️ Emails", "ips": "🌐 IPs", "domains": "🔗 Dominios" if lang != "en" else "🔗 Domains", "urls": "🔎 URLs"}
+        copy_label = "Copiar" if lang != "en" else "Copy"
+        copied_label = "¡Copiado!" if lang != "en" else "Copied!"
+        boxes = []
+        for key in order:
+            values = iocs.get(key, [])
+            shown = values[:50]
+            items = "\n".join(f"<li>{narrative.escape_html(v)}</li>" for v in shown)
+            extra = f"<li>… +{len(values) - 50}</li>" if len(values) > 50 else ""
+            empty = "<li>—</li>" if not shown else ""
+            boxes.append(f"""
+                <div class="ioc-box">
+                    <h3>{labels[key]} ({len(values)}) <button type="button" class="btn-copy" data-ioc="{key}">{copy_label}</button></h3>
+                    <ul>{items}{extra}{empty}</ul>
+                </div>
+            """)
+        ioc_json = json.dumps({k: iocs.get(k, []) for k in order}).replace("</", "<\\/")
+        return f"""
+        <section class="narrative-section" id="sec-iocs">
+            <h2 class="section-title">{self._titles(lang)['iocs']}</h2>
+            <div class="ioc-grid">
+                {''.join(boxes)}
+            </div>
+        </section>
+        <script>
+        const iocData = {ioc_json};
+        function copyIocList(kind, btn) {{
+            const text = (iocData[kind] || []).join('\\n');
+            if (!text) return;
+            const done = () => {{
+                const original = btn.textContent;
+                btn.textContent = '{copied_label}';
+                setTimeout(() => {{ btn.textContent = original; }}, 1500);
+            }};
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+            }} else {{
+                fallbackCopy(text, done);
+            }}
+        }}
+        function fallbackCopy(text, done) {{
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            try {{ document.execCommand('copy'); done(); }} catch (e) {{}}
+            document.body.removeChild(area);
+        }}
+        document.addEventListener('DOMContentLoaded', () => {{
+            document.querySelectorAll('.btn-copy').forEach(btn => {{
+                btn.addEventListener('click', () => copyIocList(btn.dataset.ioc, btn));
+            }});
+        }});
+        </script>
+        """
+
+    def _build_methodology_section(self, narration: Dict[str, Any], lang: str) -> str:
+        rows = "\n".join(
+            f"<tr><td>{narrative.escape_html(r.get('item', ''))}</td>"
+            f"<td>{narrative.escape_html(r.get('value', ''))}</td></tr>"
+            for r in narration.get("methodology", [])
+        )
+        return f"""
+        <section class="narrative-section" id="sec-metodo">
+            <h2 class="section-title">{self._titles(lang)['methodology']}</h2>
+            <div class="summary-box">
+                <table class="method-table">
+                    {rows}
+                </table>
+            </div>
+        </section>
+        """
+
+    def _build_recommendations_section(self, narration: Dict[str, Any], lang: str) -> str:
+        items = "\n".join(
+            f"<li>{narrative.escape_html(r)}</li>" for r in narration.get("recommendations", [])
+        )
+        return f"""
+        <section class="narrative-section" id="sec-recs">
+            <h2 class="section-title">{self._titles(lang)['recommendations']}</h2>
+            <div class="summary-box">
+                <ol class="rec-list">
+                    {items}
+                </ol>
+            </div>
+        </section>
+        """
+
+    def _build_glossary_section(self, narration: Dict[str, Any], lang: str) -> str:
+        items = "\n".join(
+            f"<dt>{narrative.escape_html(g.get('term', ''))}</dt>"
+            f"<dd>{narrative.escape_html(g.get('definition', ''))}</dd>"
+            for g in narration.get("glossary", [])
+        )
+        return f"""
+        <section class="narrative-section" id="sec-glosario">
+            <h2 class="section-title">{self._titles(lang)['glossary']}</h2>
+            <div class="summary-box">
+                <dl class="glossary-list">
+                    {items}
+                </dl>
+            </div>
+        </section>
+        """
+
+    def generate_report(self,
+                       records: List[Dict[str, Any]],
+                       output_filepath: str,
                        search_term: str,
-                       lang: str = "es") -> str:
+                       lang: str = "es",
+                       search_id: Optional[str] = None) -> str:
         """
         Generate a complete interactive HTML report with embedded SVG charts.
-        
+
         Args:
             records: List of search result records.
             output_filepath: Path where to save the generated HTML file.
             search_term: The search term queried.
-            
+            lang: Report language ('es' or 'en').
+            search_id: IntelX search ID for the methodology section.
+
         Returns:
             Path to the generated HTML file.
         """
@@ -1088,99 +1437,178 @@ class InteractiveReportGenerator:
             # Process data
             analysis = self.data_processor.analyze_records(records)
             chart_data = self.data_processor.prepare_chart_data(analysis)
-            
+            chart_data["severity_title"] = narrative.STRINGS.get(lang, narrative.STRINGS["es"])["severity_title"]
+            chart_data["media_title"] = narrative.STRINGS.get(lang, narrative.STRINGS["es"])["media_title"]
+
+            # Narrative layer (executive summary, findings, IOCs, methodology...)
+            narration = narrative.build_report_narrative(records, search_term, search_id, lang)
+
             # Generate HTML components
-            html_content = self._build_html_document(records, analysis, chart_data, search_term, lang=lang)
-            
+            html_content = self._build_html_document(records, analysis, chart_data, search_term,
+                                                     lang=lang, narration=narration,
+                                                     search_id=search_id)
+
             # Ensure output directory exists
             os.makedirs(os.path.dirname(output_filepath), exist_ok=True)
-            
+
             # Write to file
             with open(output_filepath, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-            
+
             logger.info(f"Interactive HTML report generated: {output_filepath}")
             return output_filepath
-            
+
         except Exception as e:
             logger.error(f"Error generating interactive report: {e}")
             raise
 
-    def _build_html_document(self, 
-                           records: List[Dict[str, Any]], 
-                           analysis: Dict[str, Any], 
-                           chart_data: Dict[str, Any], 
+    def _build_html_document(self,
+                           records: List[Dict[str, Any]],
+                           analysis: Dict[str, Any],
+                           chart_data: Dict[str, Any],
                            search_term: str,
-                           lang: str = "es") -> str:
+                           lang: str = "es",
+                           narration: Optional[Dict[str, Any]] = None,
+                           search_id: Optional[str] = None) -> str:
         """Build the complete HTML document."""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         from config import get_text
-        
+        lang = lang if lang in ("es", "en") else "es"
+        titles = self._titles(lang)
+        safe_term = narrative.escape_html(search_term) if search_term else "N/A"
+        header_term = "Término de búsqueda" if lang == "es" else "Search term"
+        header_results = "Resultados" if lang == "es" else "Results"
+        header_generated = "Generado" if lang == "es" else "Generated"
+        header_version = "Versión" if lang == "es" else "Version"
+        export_btn = "Exportar a PDF" if lang == "es" else "Export to PDF"
+        footer_text = ("Reporte interactivo standalone" if lang == "es"
+                       else "Standalone interactive report")
+
+        if narration is None:
+            narration = narrative.build_report_narrative(records, search_term, search_id, lang)
+
+        if lang == "en":
+            ctrl = {"doc": "Document Control", "version": "Version", "generated": "Generated",
+                    "author": "Author", "query": "Query", "sid": "Search ID",
+                    "results": "Results", "dist": "Distribution", "internal": "Internal use",
+                    "index": "Contents"}
+        else:
+            ctrl = {"doc": "Control del Documento", "version": "Versión", "generated": "Generado",
+                    "author": "Autor", "query": "Consulta", "sid": "ID de búsqueda",
+                    "results": "Resultados", "dist": "Distribución", "internal": "Uso interno",
+                    "index": "Índice"}
+        nav_links = [
+            ("sec-resumen", titles["summary"]), ("sec-visual", titles["visual"]),
+            ("sec-hallazgos", titles["findings"]), ("sec-datos", titles["data"]),
+            ("sec-iocs", titles["iocs"]), ("sec-metodo", titles["methodology"]),
+            ("sec-recs", titles["recommendations"]), ("sec-glosario", titles["glossary"]),
+        ]
+        nav_html = " · ".join(f'<a href="#{anchor}">{narrative.escape_html(label)}</a>'
+                              for anchor, label in nav_links)
+        control_html = f"""
+        <section class="doc-control">
+            <h2 class="section-title">{ctrl['doc']}</h2>
+            <div class="doc-grid">
+                <div><span>{ctrl['version']}:</span> 1.0 ({narrative.escape_html(self.app_version)})</div>
+                <div><span>{ctrl['generated']}:</span> {timestamp}</div>
+                <div><span>{ctrl['author']}:</span> IntelX Checker</div>
+                <div><span>{ctrl['query']}:</span> {safe_term}</div>
+                <div><span>{ctrl['sid']}:</span> {narrative.escape_html(search_id) if search_id else 'N/A'}</div>
+                <div><span>{ctrl['results']}:</span> {analysis['total_results']}</div>
+                <div><span>{ctrl['dist']}:</span> TLP:CLEAR · {ctrl['internal']}</div>
+            </div>
+            <nav class="toc-nav"><strong>{ctrl['index']}:</strong> {nav_html}</nav>
+        </section>
+        """
+
         # Build KPI cards
         kpi_cards = self._build_kpi_cards(analysis, lang=lang)
-        
+
+        # Build narrative sections
+        summary_html = self._build_summary_section(narration, lang)
+        findings_html = self._build_findings_section(narration, lang)
+        ioc_html = self._build_ioc_section(narration, lang)
+        methodology_html = self._build_methodology_section(narration, lang)
+        recommendations_html = self._build_recommendations_section(narration, lang)
+        glossary_html = self._build_glossary_section(narration, lang)
+
         # Build charts section
         charts_html = self.visualization_generator.generate_charts_html(chart_data)
         charts_js = self.visualization_generator.generate_charts_js(chart_data)
-        
+
         # Build table section
         table_html = self.table_generator.generate_table_html(records)
         table_js = self.table_generator.generate_table_js(records)
-        
+
         # Build complete HTML
         html = f"""<!DOCTYPE html>
-<html lang="es">
+<html lang="{lang}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IntelX Report - {search_term}</title>
+    <title>IntelX Report - {safe_term}</title>
     <style>
     {self.style_generator.generate_css()}
+    {self._narrative_css()}
+    {self._extra_css()}
+    {self._print_css()}
     </style>
 </head>
 <body>
+    <div class="tlp-banner">TLP:CLEAR</div>
     <div class="container">
         <!-- Header -->
         <header class="header">
             <h1>📊 IntelX Intelligence Report</h1>
             <div class="header-meta">
-                <strong>Término de búsqueda:</strong> {search_term or 'N/A'} • 
-                <strong>Resultados:</strong> {analysis['total_results']} • 
-                <strong>Generado:</strong> {timestamp} • 
-                <strong>Versión:</strong> {self.app_version}
+                <strong>{header_term}:</strong> {safe_term} •
+                <strong>{header_results}:</strong> {analysis['total_results']} •
+                <strong>{header_generated}:</strong> {timestamp} •
+                <strong>{header_version}:</strong> {self.app_version}
             </div>
             <div class="header-actions">
                 <button type="button" id="exportPdf" class="btn-export-pdf">
-                    Exportar a PDF
+                    {export_btn}
                 </button>
             </div>
         </header>
 
+        {control_html}
+
+        {summary_html}
+
         <!-- KPI Section -->
-        <section class="kpi-section">
+        <section class="kpi-section" id="sec-kpis">
             <div class="kpi-grid">
                 {kpi_cards}
             </div>
         </section>
 
         <!-- Charts Section -->
-        <section class="charts-section">
-            <h2 class="section-title">📈 Análisis Visual</h2>
+        <section class="charts-section" id="sec-visual">
+            <h2 class="section-title">{titles['visual']}</h2>
             {charts_html}
         </section>
 
+        {findings_html}
+
         <!-- Table Section -->
-        <section class="table-section">
-            <h2 class="section-title">🔍 Datos Detallados</h2>
+        <section class="table-section" id="sec-datos">
+            <h2 class="section-title">{titles['data']}</h2>
             {table_html}
         </section>
+
+        {ioc_html}
+        {methodology_html}
+        {recommendations_html}
+        {glossary_html}
 
         <!-- Footer -->
         <footer class="footer">
             <p>
-                🛡️ IntelX Checker V2 • Versión {self.app_version} • 
-                Generado el {timestamp} • 
-                Reporte interactivo standalone
+                🛡️ IntelX Checker V2 • {header_version} {self.app_version} •
+                {header_generated} {timestamp} •
+                {footer_text}
             </p>
         </footer>
     </div>
@@ -1195,7 +1623,7 @@ class InteractiveReportGenerator:
     </script>
 </body>
 </html>"""
-        
+
         return html
 
     def _build_kpi_cards(self, analysis: Dict[str, Any], lang: str = "es") -> str:
@@ -1229,15 +1657,18 @@ class InteractiveReportGenerator:
         return '\n'.join(cards_html)
 
 
-def generate_interactive_html_report(records: List[Dict[str, Any]], 
-                                   output_filepath: str, 
-                                   search_term: str, 
-                                   app_version: str = "2.0.0") -> str:
+def generate_interactive_html_report(records: List[Dict[str, Any]],
+                                   output_filepath: str,
+                                   search_term: str,
+                                   app_version: str = "2.0.0",
+                                   lang: str = "es",
+                                   search_id: Optional[str] = None) -> str:
     """
     Main function to generate an interactive HTML report.
-    
+
     This function provides a simple interface to generate a complete
     interactive HTML report with all the requested features.
     """
     generator = InteractiveReportGenerator(app_version)
-    return generator.generate_report(records, output_filepath, search_term)
+    return generator.generate_report(records, output_filepath, search_term,
+                                      lang=lang, search_id=search_id)

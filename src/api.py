@@ -87,10 +87,21 @@ def check_intelx(
     search_term: str,
     api_key: str,
     selected_buckets: Optional[List[str]] = None,
-    cancel_event: Optional[threading.Event] = None
+    cancel_event: Optional[threading.Event] = None,
+    datefrom: str = "",
+    dateto: str = "",
+    maxresults: Optional[int] = None
 ) -> Tuple[bool, Union[str, Dict[str, Any]], Optional[str]]:
     """
     Inicia una búsqueda en IntelX y recupera los resultados.
+
+    Args:
+        search_term: Término a buscar.
+        api_key: Clave API de IntelX.
+        selected_buckets: Buckets a consultar (vacío = todos).
+        cancel_event: Evento para cancelación cooperativa.
+        datefrom/dateto: Filtros de fecha ISO ("" = sin filtro).
+        maxresults: Tope de resultados (None = MAX_RESULTS_TO_FETCH).
 
     Returns:
         Tuple[bool, Union[str, Dict], Optional[str]]: (success, data_or_error_message, search_id)
@@ -108,15 +119,16 @@ def check_intelx(
         return False, "Búsqueda cancelada antes de iniciar.", None
 
     selected_buckets = selected_buckets if selected_buckets is not None else []
+    limit = maxresults if isinstance(maxresults, int) and maxresults > 0 else MAX_RESULTS_TO_FETCH
     headers = {'x-key': api_key, 'User-Agent': USER_AGENT}
     post_data = {
         "term": search_term,
         "buckets": selected_buckets,
         "lookuplevel": 0,
-        "maxresults": MAX_RESULTS_TO_FETCH,
+        "maxresults": limit,
         "timeout": 25,
-        "datefrom": "",
-        "dateto": "",
+        "datefrom": datefrom or "",
+        "dateto": dateto or "",
         "sort": 2,
         "media": 0,
         "terminate": [],
@@ -151,7 +163,7 @@ def check_intelx(
             return False, "Búsqueda cancelada.", search_id
 
         success_retrieve, data_retrieve = retrieve_intelx_results(
-            search_id, initial_status, headers, cancel_event
+            search_id, initial_status, headers, cancel_event, max_results=limit
         )
         return success_retrieve, data_retrieve, search_id
 
@@ -192,7 +204,8 @@ def retrieve_intelx_results(
     search_id: str,
     initial_status: int,
     headers: Dict[str, str],
-    cancel_event: threading.Event
+    cancel_event: threading.Event,
+    max_results: Optional[int] = None
 ) -> Tuple[bool, Union[str, Dict[str, Any]]]:
     """
     Espera y recupera los resultados de una búsqueda IntelX, manejando estados y cancelación.
@@ -200,7 +213,8 @@ def retrieve_intelx_results(
     Returns:
         Tuple[bool, Union[str, Dict]]: (success, data_or_error_message)
     """
-    results_url = f"{INTELX_API_URL_RESULT}?id={search_id}&limit={MAX_RESULTS_TO_FETCH}&previewlines=1"
+    limit = max_results if isinstance(max_results, int) and max_results > 0 else MAX_RESULTS_TO_FETCH
+    results_url = f"{INTELX_API_URL_RESULT}?id={search_id}&limit={limit}&previewlines=1"
     status_url = f"{INTELX_API_URL_STATUS}?id={search_id}"
     start_time = time.time()
     current_status = initial_status
