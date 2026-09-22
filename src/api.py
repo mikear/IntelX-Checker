@@ -37,6 +37,14 @@ USER_AGENT: str = "Python-CustomTkinter-IntelX-Checker-App/1.3.2"
 DEFAULT_DATE_MIN: datetime = datetime(MINYEAR, 1, 1, tzinfo=timezone.utc)
 DEFAULT_DATE_MAX: datetime = datetime(MAXYEAR, 12, 31, tzinfo=timezone.utc)
 
+# Último ID de búsqueda creado en este proceso (para poder terminarlo al cancelar).
+_LAST_SEARCH_ID: Optional[str] = None
+
+
+def get_last_search_id() -> Optional[str]:
+    """Devuelve el último search_id generado por check_intelx en este proceso."""
+    return _LAST_SEARCH_ID
+
 # --- Mapeo completo de Media Type según documentación oficial de IntelX SDK ---
 MEDIA_TYPE_MAP: Dict[int, str] = {
     0: "All/Not Set",
@@ -87,6 +95,7 @@ def check_intelx(
     Returns:
         Tuple[bool, Union[str, Dict], Optional[str]]: (success, data_or_error_message, search_id)
     """
+    global _LAST_SEARCH_ID
     if not search_term:
         return False, "Introduce un término de búsqueda válido.", None
     api_key = (api_key or "").strip()
@@ -129,6 +138,7 @@ def check_intelx(
         search_result = response.json()
         search_id = search_result.get('id')
         initial_status = search_result.get('status', -1)
+        _LAST_SEARCH_ID = search_id
 
         if not search_id:
             logging.error("La API de IntelX no devolvió un ID de búsqueda en la respuesta.")
@@ -378,3 +388,32 @@ def get_api_credits(api_key: str) -> Tuple[bool, Union[int, str]]:
     except Exception as e:
         logging.exception(f"Error inesperado obteniendo créditos: {e}")
         return False, f"Error inesperado: {e}"
+
+def terminate_intelx_search(search_id: str, api_key: str) -> bool:
+    """Intenta terminar una búsqueda IntelX en el servidor para liberar créditos.
+
+    Se usa al cancelar una búsqueda desde la UI. No bloquea el polling local
+    (eso lo hace cancel_event); es best-effort y nunca lanza excepciones.
+
+    Returns:
+        True si el servidor aceptó la terminación, False en caso contrario.
+    """
+    search_id = (search_id or "").strip()
+    api_key = (api_key or "").strip()
+    if not search_id or not api_key:
+        return False
+
+    headers = {'x-key': api_key, 'User-Agent': USER_AGENT}
+    try:
+        response = requests.post(
+            INTELX_API_URL_TERMINATE,
+            headers=headers,
+            json={"id": search_id},
+            timeout=REQUEST_TIMEOUT_TERMINATE
+        )
+        response.raise_for_status()
+        logging.info(f"Búsqueda {search_id} terminada en el servidor.")
+        return True
+    except Exception as e:
+        logging.warning(f"No se pudo terminar la búsqueda {search_id} en el servidor: {e}")
+        return False

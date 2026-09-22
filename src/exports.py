@@ -228,9 +228,9 @@ def export_to_interactive_html(records: List[Dict[str, Any]],
 
     This generates a modern, interactive HTML report with:
     - Interactive table with sorting and filtering
-    - Data visualization charts
+    - Data visualization charts (pure SVG, no external dependencies)
     - Modern responsive design
-    - Standalone HTML file (no external dependencies except CDN for Chart.js)
+    - Standalone HTML file (no CDN, fully offline)
     
     Args:
         records: List of record dictionaries to export

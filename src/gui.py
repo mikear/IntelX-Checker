@@ -33,8 +33,11 @@ except ImportError:
 
 from config import get_stored_api_key, save_stored_api_key
 from i18n import LANGUAGES, t
-from api import check_intelx, get_api_credits, MEDIA_TYPE_MAP
-from utils import open_in_browser, load_history, save_history, merge_records
+from api import check_intelx, get_api_credits, terminate_intelx_search, get_last_search_id, MEDIA_TYPE_MAP
+from utils import (
+    open_in_browser, load_history, save_history, merge_records,
+    normalize_search_term, is_same_search_term,
+)
 import exports as exports_module
 
 logging.basicConfig(
@@ -186,6 +189,24 @@ class AnalysisWorker(QObject):
             self.finished.emit(False, str(e), "")
 
 
+class CreditsWorker(QObject):
+    """Worker no bloqueante para consultar créditos sin congelar la UI."""
+    finished = Signal(bool, object)
+
+    def __init__(self, api_key):
+        super().__init__()
+        self.api_key = api_key
+
+    @Slot()
+    def run(self):
+        try:
+            success, value = get_api_credits(self.api_key)
+            self.finished.emit(success, value)
+        except Exception as e:
+            logger.exception("Error en worker de créditos")
+            self.finished.emit(False, str(e))
+
+
 # --- StatCard Widget ---
 class StatCard(QFrame):
     """Dashboard KPI card widget matching IP-Analyzer style."""
@@ -247,6 +268,13 @@ class MainWindow(QMainWindow):
         self.stop_search = False
         self.cancel_event = None
         self.preview_windows = {}
+        self.credits_thread = None
+        self.credits_worker = None
+        # Término de la última búsqueda exitosa (normalizado para comparar).
+        # Si la siguiente búsqueda es del mismo dominio se suman hallazgos,
+        # si es diferente se reemplaza la tabla.
+        self.last_search_term = ''
+        self._pending_search_term = ''
 
         # Setup
         self._init_icons_safe()
@@ -802,19 +830,52 @@ class MainWindow(QMainWindow):
         webbrowser.open("https://intelx.io/account?tab=developer")
 
     def refresh_credits(self):
+        """Consulta créditos en segundo plano para no congelar la UI."""
         if not self.api_key:
             return
         try:
-            success, credits_or_error = get_api_credits(self.api_key)
+            if self.credits_thread is not None and self.credits_thread.isRunning():
+                return
+        except Exception:
+            pass
+        try:
+            self.credits_worker = CreditsWorker(self.api_key)
+            self.credits_thread = QThread()
+            self.credits_worker.moveToThread(self.credits_thread)
+            self.credits_thread.started.connect(self.credits_worker.run)
+            self.credits_worker.finished.connect(self._on_credits_finished)
+            self.credits_worker.finished.connect(self.credits_thread.quit)
+            self.credits_thread.finished.connect(self._cleanup_credits_thread)
+            self.credits_thread.start()
+        except Exception:
+            logger.exception("Error lanzando consulta de créditos")
+
+    @Slot(bool, object)
+    def _on_credits_finished(self, success, value):
+        try:
             if success:
-                self.credits = credits_or_error
+                self.credits = value
                 lang = self.current_language
                 self.credits_label.setText(f"{t('Créditos', lang)} {self.credits}")
             else:
                 self.credits_label.setText(f"{t('Créditos', self.current_language)} Error")
-        except Exception as e:
-            logger.exception("Error obteniendo créditos")
-            self.credits_label.setText(f"{t('Créditos', self.current_language)} Error")
+        except Exception:
+            logger.exception("Error actualizando créditos")
+
+    @Slot()
+    def _cleanup_credits_thread(self):
+        try:
+            if self.credits_worker is not None:
+                self.credits_worker.deleteLater()
+        except Exception:
+            pass
+        try:
+            if self.credits_thread is not None:
+                self.credits_thread.deleteLater()
+        except Exception:
+            pass
+        self.credits_worker = None
+        self.credits_thread = None
 
     def show_about(self):
         from ui_components import AboutDialog
@@ -835,6 +896,17 @@ class MainWindow(QMainWindow):
         self._existing_count_before_search = len(self.current_records)
         self.stop_search = False
         self.cancel_event = threading.Event()
+        # Guardar término pendiente para decidir en _on_search_finished
+        # si se suma (mismo dominio) o se reemplaza (dominio distinto).
+        self._pending_search_term = normalize_search_term(term)
+        # Si cambia de dominio, limpiar el filtro para que lo nuevo no quede oculto.
+        try:
+            if (self.current_records
+                    and not is_same_search_term(self.last_search_term, term)
+                    and hasattr(self, 'filter_entry')):
+                self.filter_entry.clear()
+        except Exception:
+            pass
 
         self.search_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
@@ -862,18 +934,29 @@ class MainWindow(QMainWindow):
     def _on_search_finished(self, success, data, search_id):
         if success:
             new_records = data if isinstance(data, list) else []
-            self.current_records = merge_records(self.current_records, new_records)
+            pending_term = self._pending_search_term or getattr(self.worker, 'term', '')
+            if is_same_search_term(self.last_search_term, pending_term) and self.current_records:
+                self.current_records = merge_records(self.current_records, new_records)
+            else:
+                # Dominio diferente (o primera búsqueda): mostrar solo la tabla nueva.
+                self.current_records = list(new_records)
+            self.last_search_term = normalize_search_term(pending_term)
+            self._pending_search_term = ''
             save_history(self.current_records)
             self.progress_bar.setValue(100)
             self.progress_label.setText(t("Completado", self.current_language))
             self.status_label.setText(
-                f"{t('Resultados', self.current_language)}: {len(self.current_records)} registros"
+                f"{t('Resultados', self.current_language)}: {len(new_records)} nuevos | {len(self.current_records)} total"
             )
             self._populate_results()
             self._update_kpi_cards()
         else:
             error_msg = data if isinstance(data, str) else "Error"
-            self.status_label.setText(error_msg)
+            self._pending_search_term = ''
+            if self.stop_search:
+                self.status_label.setText(t("Búsqueda cancelada", self.current_language))
+            else:
+                self.status_label.setText(error_msg)
             self.progress_bar.setValue(0)
             self.progress_label.setText(t("Error", self.current_language))
 
@@ -890,6 +973,18 @@ class MainWindow(QMainWindow):
         self.stop_search = True
         if self.cancel_event:
             self.cancel_event.set()
+        # Liberar la búsqueda en el servidor (best-effort, sin bloquear la UI).
+        try:
+            search_id = get_last_search_id()
+            api_key = self.api_key
+            if search_id and api_key:
+                threading.Thread(
+                    target=terminate_intelx_search,
+                    args=(search_id, api_key),
+                    daemon=True
+                ).start()
+        except Exception:
+            pass
         self.status_label.setText(t("Búsqueda cancelada", self.current_language))
         self.progress_label.setText(t("Cancelado", self.current_language))
         self.search_button.setEnabled(True)
@@ -963,6 +1058,11 @@ class MainWindow(QMainWindow):
                     isp_item.setForeground(QColor(COLORS['error_text']))
 
         self.table.setSortingEnabled(True)
+        try:
+            self.table.scrollToTop()
+            self.table.clearSelection()
+        except Exception:
+            pass
 
     def _extract_ip_address(self, record_dict):
         ipv4_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
@@ -1066,11 +1166,33 @@ class MainWindow(QMainWindow):
         if not selection:
             return
         row = selection[0].row()
-        system_id = self.table.item(row, 8).text()
+        item = self.table.item(row, 8)
+        if item is None:
+            return
+        system_id = item.text()
         record = self._find_record_by_id(system_id)
         if record:
             from ui_components import PreviewWindow
-            PreviewWindow(self, record)
+            key = str(system_id)
+            old = self.preview_windows.pop(key, None)
+            try:
+                if old is not None:
+                    old.close()
+            except Exception:
+                pass
+            win = PreviewWindow(self, record)
+            self.preview_windows[key] = win
+            try:
+                win.setAttribute(Qt.WA_DeleteOnClose, True)
+                win.finished.connect(lambda _r, k=key: self.preview_windows.pop(k, None))
+            except Exception:
+                pass
+            win.show()
+            try:
+                win.raise_()
+                win.activateWindow()
+            except Exception:
+                pass
 
     def _find_record_by_id(self, record_id):
         for i, record in enumerate(self.current_records):
@@ -1232,6 +1354,12 @@ class MainWindow(QMainWindow):
                         w.close()
                 except Exception:
                     pass
+        try:
+            if self.credits_thread is not None and self.credits_thread.isRunning():
+                self.credits_thread.quit()
+                self.credits_thread.wait(2000)
+        except Exception:
+            pass
         event.accept()
 
 

@@ -70,12 +70,35 @@ def merge_records(existing: list, new: list) -> list:
     """
     seen = set()
     merged = []
-    for record in existing + new:
+    for record in (existing or []) + (new or []):
         key = _get_record_key(record)
         if key not in seen:
             seen.add(key)
             merged.append(record)
     return merged
+
+
+def normalize_search_term(term) -> str:
+    """Normaliza un término de búsqueda para comparar dominios.
+
+    Strip + lower. Devuelve '' si no es str válido.
+    """
+    if not isinstance(term, str):
+        return ''
+    return term.strip().lower()
+
+
+def is_same_search_term(previous, current) -> bool:
+    """Indica si dos búsquedas corresponden al mismo dominio/término.
+
+    Compara de forma normalizada (strip + lower). Si el término actual
+    está vacío devuelve False.
+    """
+    prev_norm = normalize_search_term(previous)
+    curr_norm = normalize_search_term(current)
+    if not curr_norm:
+        return False
+    return prev_norm == curr_norm
 
 
 def load_history() -> list:

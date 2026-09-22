@@ -50,9 +50,9 @@ python src/main.py
 | `requests` | Comunicacion con API IntelX |
 | `python-dotenv` | Gestion de .env |
 | `keyring` | Almacenamiento seguro de API key |
-| `matplotlib` | Graficos para reportes |
-| `pandas` | Analisis de datos |
 | `reportlab` | Generacion de PDF |
+
+> Los reportes HTML usan gráficos SVG puros (`src/svg_charts.py`), sin dependencias externas.
 
 ## Configuracion
 

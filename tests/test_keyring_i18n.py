@@ -5,8 +5,8 @@ from i18n import t, LANGUAGES
 
 class TestKeyringAndI18n(unittest.TestCase):
     def test_i18n_t(self):
-        self.assertEqual(t("Buscar", "es"), "Buscar")
-        self.assertEqual(t("Buscar", "en"), "Search")
+        self.assertEqual(t("Buscar", "es"), "🔍 Buscar")
+        self.assertEqual(t("Buscar", "en"), "🔍 Search")
 
     @patch("keyring_storage.set_key")
     @patch("keyring.delete_password")
